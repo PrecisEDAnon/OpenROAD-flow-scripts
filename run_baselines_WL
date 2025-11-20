@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status (mostly for setup steps).
+set -e
+
+FLOW_DIR="flow"
+TIMESTAMP=$(date "+%Y%m%d_%H%M%S")
+BACKUP_DIR="${FLOW_DIR}/backup_${TIMESTAMP}"
+
+echo "=== Setup ==="
+echo "Backup Directory: ${BACKUP_DIR}"
+mkdir -p "${BACKUP_DIR}"
+
+# Backup existing output directories
+for dir in results logs reports objects; do
+    if [ -d "${FLOW_DIR}/${dir}" ]; then
+        echo "Backing up ${dir}..."
+        mv "${FLOW_DIR}/${dir}" "${BACKUP_DIR}/"
+    fi
+done
+
+# Clean the flow directory
+echo "Cleaning flow directory (make nuke)..."
+make -C "${FLOW_DIR}" nuke
+
+# Create logs directory for the parallel run logs
+mkdir -p "${FLOW_DIR}/logs"
+
+echo "=== Starting Parallel Jobs ==="
+
+# Function to run a job
+# $1: Platform
+# $2: Design
+run_job() {
+    local platform=$1
+    local design=$2
+    local log_file="${FLOW_DIR}/logs/run_wrapper_${platform}_${design}.log"
+    
+    echo "Launching ${platform}/${design}..."
+    # Run make in background with nohup, redirecting output
+    nohup make -C "${FLOW_DIR}" DESIGN_CONFIG="./designs/${platform}/${design}/config.mk" > "${log_file}" 2>&1 &
+    echo "Started process $!"
+}
+
+# Launch jobs
+run_job asap7 aes
+run_job asap7 ibex
+run_job asap7 jpeg
+run_job sky130hd aes
+run_job sky130hd ibex
+run_job sky130hd jpeg
+
+echo "=== All Jobs Launched in Background ==="
+echo "Check ${FLOW_DIR}/logs/ for progress."
