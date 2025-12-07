@@ -28,6 +28,35 @@ proc load_design { design_file sdc_file } {
   # Read SDC file
   read_sdc $::env(RESULTS_DIR)/$sdc_file
 
+  if {[env_var_truthy DISABLE_CRPR]} {
+    if {[llength [info commands set_crpr_enabled]]} {
+      puts "INFO: Disabling CRPR due to DISABLE_CRPR=1"
+      set_crpr_enabled false
+    }
+  }
+
+  if {[info exists ::env(PLATFORM)] && $::env(PLATFORM) eq "nangate45"} {
+    set legacy_timing_disabled [env_var_truthy DISABLE_NG45_LEGACY_TIMING]
+    set legacy_load_disabled [env_var_truthy DISABLE_NG45_LEGACY_LOAD]
+    if { !$legacy_timing_disabled } {
+      if {[llength [info commands sta::set_ng45_legacy_timing_mode]]} {
+        puts "INFO: Enabling Nangate45 legacy timing mode (load + CRPR)."
+        sta::set_ng45_legacy_timing_mode true
+      } elseif { !$legacy_load_disabled && [llength [info commands sta::set_legacy_load_subtract_pin_cap_mode]] } {
+        puts "INFO: Enabling Nangate45 legacy load subtract-pin-cap mode."
+        sta::set_legacy_load_subtract_pin_cap_mode true
+      }
+    } elseif { !$legacy_load_disabled && [llength [info commands sta::set_legacy_load_subtract_pin_cap_mode]] } {
+      puts "INFO: Enabling Nangate45 legacy load subtract-pin-cap mode."
+      sta::set_legacy_load_subtract_pin_cap_mode true
+    }
+    if { [env_var_truthy DISABLE_NG45_DEAD_LOGIC_REMOVAL]
+         && [llength [info commands rsz::set_eliminate_dead_logic_enabled]] } {
+      puts "INFO: Disabling Nangate45 dead-logic elimination."
+      rsz::set_eliminate_dead_logic_enabled 0
+    }
+  }
+
   if { [file exists $::env(PLATFORM_DIR)/derate.tcl] } {
     log_cmd source $::env(PLATFORM_DIR)/derate.tcl
   }

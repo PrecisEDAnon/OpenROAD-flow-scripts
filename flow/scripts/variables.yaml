@@ -361,6 +361,14 @@ SYNTH_MINIMUM_KEEP_SIZE:
   stages:
     - synth
   default: 0
+MAX_UNGROUP_SIZE:
+  description: >
+    Area threshold, expressed in NAND2 gate equivalents, used to preserve
+    modules during hierarchical synthesis. When set, this value also seeds
+    SYNTH_MINIMUM_KEEP_SIZE so large blocks are not unintentionally flattened.
+  stages:
+    - synth
+  default: ""
 SYNTH_WRAPPED_OPERATORS:
   description: >
     Synthesize multiple architectural options for each arithmetic operator in the
@@ -642,7 +650,7 @@ SETUP_SLACK_MARGIN:
     - cts
     - floorplan
     - grt
-  default: 0
+  default: 0.02
 SETUP_REPAIR_SEQUENCE:
   description: |
     Specifies the sequence of moves to do in repair_timing -setup. This should be a string
@@ -984,10 +992,56 @@ PRE_GLOBAL_ROUTE_TCL:
     - grt
 GLOBAL_ROUTE_ARGS:
   description: >
-    Replaces default arguments for global route.
+    Extra arguments appended to the default FastRoute invocation.
+    Defaults include -congestion_iterations 30 -congestion_report_iter_step 5 -verbose.
   stages:
     - grt
-  default: -congestion_iterations 30 -congestion_report_iter_step 5 -verbose
+  default: ""
+DISABLE_CRPR:
+  description: >
+    Disable clock reconvergence pessimism removal inside OpenSTA after SDCs are
+    loaded. Useful for debugging the timing deltas introduced by CRPR.
+  stages:
+    - floorplan
+    - place
+    - cts
+    - grt
+    - route
+  default: 0
+DISABLE_NG45_LEGACY_LOAD:
+  description: >
+    Set to 1 to keep Nangate45 on the newer OpenSTA load model. When left at 0,
+    the flow enables a legacy subtract-pin-cap mode to match October timing.
+  stages:
+    - floorplan
+    - place
+    - cts
+    - grt
+    - route
+  default: 0
+DISABLE_NG45_LEGACY_TIMING:
+  description: >
+    Set to 1 to prevent the Nangate45 legacy timing mode from enabling
+    automatically. When the mode is active, OpenSTA reverts both the legacy
+    load subtraction behaviour and the October-style CRPR matching to curb ECP
+    pessimism.
+  stages:
+    - floorplan
+    - place
+    - cts
+    - grt
+    - route
+  default: 0
+DISABLE_NG45_DEAD_LOGIC_REMOVAL:
+  description: >
+    Set to 1 to turn off resizer's dead-logic elimination on Nangate45 flows.
+    The default keeps the cleanup enabled while still allowing opt-out for
+    debugging sensitivity to the pass.
+  stages:
+    - floorplan
+    - place
+    - cts
+  default: 0
 MATCH_CELL_FOOTPRINT:
   description: >
     Enforce sizing operations to only swap cells that have the same layout
@@ -996,6 +1050,18 @@ MATCH_CELL_FOOTPRINT:
     - floorplan
     - place
     - cts
+    - route
+  default: 0
+NG45_USE_DETAILED_PARA:
+  description: >
+    Controls which parasitics source resizer should use post-route on
+    Nangate45 designs. The default of 0 keeps the global-route RC model so the
+    timing view aligns with the October toolchain; set to 1 to keep the newer
+    detailed-routing parasitics.
+  stages:
+    - place
+    - cts
+    - grt
     - route
   default: 0
 RTLMP_MAX_LEVEL:

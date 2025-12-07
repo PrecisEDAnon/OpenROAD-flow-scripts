@@ -31,6 +31,14 @@ export TIELO_CELL_AND_PORT = LOGIC0_X1 Z
 # Used in synthesis
 export MIN_BUF_CELL_AND_PORTS = BUF_X1 A Z
 
+# Resizer footprint data is incomplete for Nangate45.
+export MATCH_CELL_FOOTPRINT ?= 0
+export GPL_KEEP_OVERFLOW ?= 1.0
+# Prefer global-route parasitics for post-route timing unless explicitly overridden.
+export NG45_USE_DETAILED_PARA ?= 0
+# Keep dead-logic elimination enabled by default; set to 1 to disable it.
+export DISABLE_NG45_DEAD_LOGIC_REMOVAL ?= 0
+
 
 # Yosys mapping files
 export LATCH_MAP_FILE = $(PLATFORM_DIR)/cells_latch.v
