@@ -12,9 +12,26 @@ proc global_route_helper { } {
   append_env_var res_aware ENABLE_RESISTANCE_AWARE -resistance_aware 0
 
   proc do_global_route { res_aware } {
+    set default_route_args {-congestion_iterations 30 \
+      -congestion_report_iter_step 5 -verbose}
+    set route_args {}
+
+    if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+      set route_args $default_route_args
+      if { [env_var_exists_and_non_empty GLOBAL_ROUTE_ARGS] } {
+        set route_args [concat $route_args $::env(GLOBAL_ROUTE_ARGS)]
+      }
+    } else {
+      if { [env_var_exists_and_non_empty GLOBAL_ROUTE_ARGS] } {
+        set route_args $::env(GLOBAL_ROUTE_ARGS)
+      } else {
+        set route_args $default_route_args
+      }
+    }
+
     set all_args [concat [list \
       -congestion_report_file $::global_route_congestion_report] \
-      $::env(GLOBAL_ROUTE_ARGS) {*}$res_aware]
+      $route_args {*}$res_aware]
 
     log_cmd global_route {*}$all_args
   }
