@@ -28,6 +28,20 @@ proc load_design { design_file sdc_file } {
   # Read SDC file
   read_sdc $::env(RESULTS_DIR)/$sdc_file
 
+  if {[info exists ::env(PLATFORM)] && $::env(PLATFORM) eq "nangate45"} {
+    if { ![info exists ::env(NG45_USE_DETAILED_PARA)]
+         || [string trim $::env(NG45_USE_DETAILED_PARA)] eq "" } {
+      # Keep post-route timing consistent with the Nangate45 Oct toolchain by
+      # defaulting to global-route parasitics unless explicitly overridden.
+      set ::env(NG45_USE_DETAILED_PARA) 0
+    }
+    if { [env_var_truthy DISABLE_NG45_DEAD_LOGIC_REMOVAL]
+         && [llength [info commands rsz::set_eliminate_dead_logic_enabled]] } {
+      puts "INFO: Disabling Nangate45 dead-logic elimination."
+      rsz::set_eliminate_dead_logic_enabled 0
+    }
+  }
+
   if { [file exists $::env(PLATFORM_DIR)/derate.tcl] } {
     log_cmd source $::env(PLATFORM_DIR)/derate.tcl
   }

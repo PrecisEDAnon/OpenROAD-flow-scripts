@@ -15,7 +15,13 @@ proc log_cmd { cmd args } {
 
 proc repair_timing_helper { args } {
   set additional_args {}
-  append_env_var additional_args SETUP_SLACK_MARGIN -setup_margin 1
+  if { [lsearch -exact $args "-setup_margin"] == -1 } {
+    if { [env_var_exists_and_non_empty SETUP_SLACK_MARGIN] } {
+      lappend additional_args -setup_margin $::env(SETUP_SLACK_MARGIN)
+    } else {
+      lappend additional_args -setup_margin 0.02
+    }
+  }
   append_env_var additional_args HOLD_SLACK_MARGIN -hold_margin 1
   append_env_var additional_args SETUP_MOVE_SEQUENCE -sequence 1
   append_env_var additional_args TNS_END_PERCENT -repair_tns 1
@@ -105,6 +111,16 @@ proc env_var_equals { env_var value } {
 
 proc env_var_exists_and_non_empty { env_var } {
   return [expr { [info exists ::env($env_var)] && ![string equal $::env($env_var) ""] }]
+}
+
+proc env_var_truthy { env_var } {
+  if { [env_var_exists_and_non_empty $env_var] } {
+    set value [string tolower [string trim $::env($env_var)]]
+    if { [lsearch -exact {1 true yes on} $value] != -1 } {
+      return 1
+    }
+  }
+  return 0
 }
 
 proc append_env_var { list_name var_name prefix has_arg } {
