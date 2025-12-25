@@ -43,6 +43,13 @@ include $(PLATFORM_DIR)/config.mk
 # is no way to escape space in defaults.py and get "foreach" to work.
 $(foreach line,$(shell $(PYTHON_EXE) $(SCRIPTS_DIR)/defaults.py),$(eval export $(subst __SPACE__, ,$(line))))
 
+# Keep hierarchy for large modules when hierarchical synthesis is enabled.
+ifeq ($(strip $(SYNTH_HIERARCHICAL)),1)
+  ifneq (,$(filter 1 true yes on,$(strip $(ORFS_ENABLE_NEW_OPENROAD))))
+    export MAX_UNGROUP_SIZE ?= 50000
+  endif
+endif
+
 export LOG_DIR     = $(WORK_HOME)/logs/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
 export OBJECTS_DIR = $(WORK_HOME)/objects/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
 export REPORTS_DIR = $(WORK_HOME)/reports/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)

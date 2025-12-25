@@ -22,6 +22,20 @@ GENERATE_ARTIFACTS_ON_FAILURE:
     lot of memory, this allows inspecting results on a laptop for a build that
     ran on a server.
   default: 0
+ORFS_ENABLE_NEW_OPENROAD:
+  description: >
+    When set (1/true/yes/on), enables the experimental OpenROAD/flow behavior
+    on this branch. When unset/0 (default), the flow aims to match vanilla ORFS
+    (93c42b2) + vanilla OpenROAD (7bc521) behavior.
+  stages:
+    - synth
+    - floorplan
+    - place
+    - cts
+    - grt
+    - route
+    - final
+  default: 0
 TNS_END_PERCENT:
   description: >
     Default TNS_END_PERCENT value for post CTS timing repair. Try fixing all
@@ -361,6 +375,14 @@ SYNTH_MINIMUM_KEEP_SIZE:
   stages:
     - synth
   default: 0
+MAX_UNGROUP_SIZE:
+  description: >
+    Area threshold, expressed in NAND2 gate equivalents, used to preserve
+    modules during hierarchical synthesis. When set, this value also seeds
+    SYNTH_MINIMUM_KEEP_SIZE so large blocks are not unintentionally flattened.
+  stages:
+    - synth
+  default: ""
 SYNTH_WRAPPED_OPERATORS:
   description: >
     Synthesize multiple architectural options for each arithmetic operator in the
@@ -642,7 +664,7 @@ SETUP_SLACK_MARGIN:
     - cts
     - floorplan
     - grt
-  default: 0
+  default: ""
 SETUP_REPAIR_SEQUENCE:
   description: |
     Specifies the sequence of moves to do in repair_timing -setup. This should be a string
@@ -984,10 +1006,21 @@ PRE_GLOBAL_ROUTE_TCL:
     - grt
 GLOBAL_ROUTE_ARGS:
   description: >
-    Replaces default arguments for global route.
+    Extra arguments appended to the default FastRoute invocation.
+    Defaults include -congestion_iterations 30 -congestion_report_iter_step 5 -verbose.
   stages:
     - grt
-  default: -congestion_iterations 30 -congestion_report_iter_step 5 -verbose
+  default: ""
+DISABLE_NG45_DEAD_LOGIC_REMOVAL:
+  description: >
+    Set to 1 to turn off resizer's dead-logic elimination on Nangate45 flows.
+    The default keeps the cleanup enabled while still allowing opt-out for
+    debugging sensitivity to the pass.
+  stages:
+    - floorplan
+    - place
+    - cts
+  default: 0
 MATCH_CELL_FOOTPRINT:
   description: >
     Enforce sizing operations to only swap cells that have the same layout
@@ -998,6 +1031,17 @@ MATCH_CELL_FOOTPRINT:
     - cts
     - route
   default: 0
+NG45_USE_DETAILED_PARA:
+  description: >
+    Controls which parasitics source resizer should use post-route on
+    Nangate45 designs. The default of 0 keeps the global-route RC model so the
+    timing view aligns with the October toolchain; set to 1 to keep the newer
+    detailed-routing parasitics.
+  stages:
+    - place
+    - cts
+    - grt
+    - route
 RTLMP_MAX_LEVEL:
   description: >
     Maximum depth of the physical hierarchy tree.

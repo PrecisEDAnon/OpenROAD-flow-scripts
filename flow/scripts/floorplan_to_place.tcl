@@ -252,8 +252,20 @@ append_env_var global_placement_args GPL_ROUTABILITY_DRIVEN -routability_driven 
 # Parameters for timing driven mode in global placement
 if { $::env(GPL_TIMING_DRIVEN) } {
   lappend global_placement_args {-timing_driven}
-  if { [info exists ::env(GPL_KEEP_OVERFLOW)] } {
-    lappend global_placement_args -keep_resize_below_overflow $::env(GPL_KEEP_OVERFLOW)
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    set gpl_keep_overflow ""
+    if { [env_var_exists_and_non_empty GPL_KEEP_OVERFLOW] } {
+      set gpl_keep_overflow $::env(GPL_KEEP_OVERFLOW)
+    } elseif { [info exists ::env(PLATFORM)] && $::env(PLATFORM) eq "nangate45" } {
+      set gpl_keep_overflow 1.0
+    }
+    if { $gpl_keep_overflow ne "" } {
+      lappend global_placement_args -keep_resize_below_overflow $gpl_keep_overflow
+    }
+  } else {
+    if { [info exists ::env(GPL_KEEP_OVERFLOW)] } {
+      lappend global_placement_args -keep_resize_below_overflow $::env(GPL_KEEP_OVERFLOW)
+    }
   }
 }
 
