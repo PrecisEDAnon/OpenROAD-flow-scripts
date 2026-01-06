@@ -28,6 +28,18 @@ class ScanCell:
 
 
 @dataclass(frozen=True)
+class ChainValidation:
+    scan_in: str
+    scan_out: str
+    cells: int
+    start_cell: Optional[str]
+    end_cell: Optional[str]
+    scan_out_source_net: Optional[str]
+    broken_links: int
+    errors: List[str]
+
+
+@dataclass(frozen=True)
 class ValidationSummary:
     scan_cells_found: int
     chains_found: int
@@ -38,6 +50,8 @@ class ValidationSummary:
     scan_out_source_net: Optional[str]
     broken_links: int
     orphan_cells: int
+    duplicate_cells: int
+    chains: List[ChainValidation]
     errors: List[str]
 
 
@@ -82,6 +96,32 @@ def _resolve_alias(assigns: Dict[str, str], net: str) -> str:
 def _is_pass_through_cell(cell_type: str) -> bool:
     return cell_type.startswith(PASS_THROUGH_CELL_PREFIXES)
 
+
+def _parse_ports_from_verilog_lines(lines: Sequence[str]) -> Tuple[Set[str], Set[str]]:
+    inputs: Set[str] = set()
+    outputs: Set[str] = set()
+
+    decl_re = re.compile(
+        r"^\s*(input|output)\s+(?:wire\s+)?(?:reg\s+)?(?:signed\s+)?(?:\[[^\]]+\]\s+)?(.+?)\s*;\s*$"
+    )
+
+    for line in lines:
+        m = decl_re.match(line)
+        if not m:
+            continue
+        direction = m.group(1)
+        rest = m.group(2)
+        for token in rest.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            name = _normalize_verilog_ident(_strip_trailing_delims(token))
+            if direction == "input":
+                inputs.add(name)
+            else:
+                outputs.add(name)
+
+    return inputs, outputs
 
 def parse_scan_cells_from_verilog(
     verilog_path: Path,
@@ -186,7 +226,7 @@ def _cell_output_nets_for_stitching(cell: ScanCell) -> List[str]:
     return nets
 
 
-def reconstruct_single_chain(
+def reconstruct_chain(
     scan_cells: Sequence[ScanCell],
     *,
     scan_in_net: str,
@@ -264,12 +304,6 @@ def reconstruct_single_chain(
             broken_links += 1
         break
 
-    orphan_cells = len(scan_cells) - len(visited)
-    if orphan_cells:
-        errors.append(
-            f"Orphan scan cells: visited {len(visited)}/{len(scan_cells)}; {orphan_cells} not in chain."
-        )
-
     return chain, errors, broken_links
 
 
@@ -280,7 +314,8 @@ def run_openroad_write_verilog(
     odb: Path,
     sdc: Optional[Path],
     out_verilog: Path,
-    max_chains: int,
+    max_chains: Optional[int],
+    max_length: Optional[int],
     clock_mixing: str,
     do_scan_replace: bool,
     do_execute_dft_plan: bool,
@@ -316,9 +351,12 @@ def run_openroad_write_verilog(
             "dft_ensure_scan_port \"scan_out_0\" OUTPUT",
         ]
 
-    tcl_lines.append(
-        f"set_dft_config -max_chains {max_chains} -clock_mixing {clock_mixing}"
-    )
+    set_dft_args = [f"-clock_mixing {clock_mixing}"]
+    if max_length is not None:
+        set_dft_args.append(f"-max_length {max_length}")
+    if max_chains is not None:
+        set_dft_args.append(f"-max_chains {max_chains}")
+    tcl_lines.append(f"set_dft_config {' '.join(set_dft_args)}")
     if do_scan_replace:
         tcl_lines.append("scan_replace")
     if do_execute_dft_plan:
@@ -368,20 +406,130 @@ def validate_netlist(
     scan_in: str,
     scan_out: str,
     scan_enable: str,
+    auto_chains: bool,
+    scan_in_prefix: str,
+    scan_out_prefix: str,
 ) -> ValidationSummary:
     scan_cells, assigns, driven_by = parse_scan_cells_from_verilog(verilog_path)
+    input_ports, output_ports = _parse_ports_from_verilog_lines(verilog_path.read_text().splitlines())
 
-    scan_out_source = _resolve_alias(assigns, scan_out)
-    scan_in_net = _normalize_verilog_ident(scan_in)
-    scan_out_net = _normalize_verilog_ident(scan_out_source)
     scan_enable_net = _normalize_verilog_ident(scan_enable)
 
-    chain, errors, broken_links = reconstruct_single_chain(
-        scan_cells,
-        scan_in_net=scan_in_net,
-        scan_out_source_net=scan_out_net,
-        driven_by=driven_by,
-    )
+    chain_validations: List[ChainValidation] = []
+    all_chain_cells: List[str] = []
+    errors: List[str] = []
+    broken_links_total = 0
+
+    if auto_chains:
+        def ordinal(name: str, prefix: str) -> Optional[int]:
+            if not name.startswith(prefix):
+                return None
+            suffix = name[len(prefix) :]
+            if not suffix.isdigit():
+                return None
+            return int(suffix)
+
+        scan_in_ports = {
+            ordinal(name, scan_in_prefix): name
+            for name in input_ports
+            if ordinal(name, scan_in_prefix) is not None
+        }
+        scan_out_ports = {
+            ordinal(name, scan_out_prefix): name
+            for name in output_ports
+            if ordinal(name, scan_out_prefix) is not None
+        }
+
+        if not scan_in_ports:
+            errors.append(
+                f"No scan-in ports found with prefix '{scan_in_prefix}' in Verilog inputs."
+            )
+        if not scan_out_ports:
+            errors.append(
+                f"No scan-out ports found with prefix '{scan_out_prefix}' in Verilog outputs."
+            )
+
+        ords_in = set(scan_in_ports.keys())
+        ords_out = set(scan_out_ports.keys())
+        only_in = sorted(o for o in ords_in - ords_out if o is not None)
+        only_out = sorted(o for o in ords_out - ords_in if o is not None)
+        if only_in:
+            errors.append(
+                f"Missing scan-out ports for ordinals: {', '.join(map(str, only_in[:16]))}"
+                f"{'...' if len(only_in) > 16 else ''}"
+            )
+        if only_out:
+            errors.append(
+                f"Missing scan-in ports for ordinals: {', '.join(map(str, only_out[:16]))}"
+                f"{'...' if len(only_out) > 16 else ''}"
+            )
+
+        for idx in sorted(o for o in ords_in & ords_out if o is not None):
+            scan_in_name = scan_in_ports[idx]
+            scan_out_name = scan_out_ports[idx]
+            scan_out_source = _resolve_alias(assigns, scan_out_name)
+            chain, chain_errors, broken_links = reconstruct_chain(
+                scan_cells,
+                scan_in_net=_normalize_verilog_ident(scan_in_name),
+                scan_out_source_net=_normalize_verilog_ident(scan_out_source),
+                driven_by=driven_by,
+            )
+            broken_links_total += broken_links
+            chain_validations.append(
+                ChainValidation(
+                    scan_in=scan_in_name,
+                    scan_out=scan_out_name,
+                    cells=len(chain),
+                    start_cell=chain[0] if chain else None,
+                    end_cell=chain[-1] if chain else None,
+                    scan_out_source_net=_normalize_verilog_ident(scan_out_source),
+                    broken_links=broken_links,
+                    errors=chain_errors,
+                )
+            )
+            all_chain_cells.extend(chain)
+            errors.extend(chain_errors)
+    else:
+        scan_out_source = _resolve_alias(assigns, scan_out)
+        chain, chain_errors, broken_links = reconstruct_chain(
+            scan_cells,
+            scan_in_net=_normalize_verilog_ident(scan_in),
+            scan_out_source_net=_normalize_verilog_ident(scan_out_source),
+            driven_by=driven_by,
+        )
+        broken_links_total += broken_links
+        chain_validations.append(
+            ChainValidation(
+                scan_in=_normalize_verilog_ident(scan_in),
+                scan_out=_normalize_verilog_ident(scan_out),
+                cells=len(chain),
+                start_cell=chain[0] if chain else None,
+                end_cell=chain[-1] if chain else None,
+                scan_out_source_net=_normalize_verilog_ident(scan_out_source),
+                broken_links=broken_links,
+                errors=chain_errors,
+            )
+        )
+        all_chain_cells.extend(chain)
+        errors.extend(chain_errors)
+
+    # Cross-chain checks: duplicates and orphans.
+    visited: Set[str] = set()
+    duplicate_cells = 0
+    for name in all_chain_cells:
+        if name in visited:
+            duplicate_cells += 1
+        visited.add(name)
+
+    orphan_cells = max(0, len(scan_cells) - len(visited))
+    if orphan_cells:
+        errors.append(
+            f"Orphan scan cells: visited {len(visited)}/{len(scan_cells)}; {orphan_cells} not in any chain."
+        )
+    if duplicate_cells:
+        errors.append(
+            f"Duplicate scan cells across chains: {duplicate_cells} duplicate occurrence(s)."
+        )
 
     def root_driver(net: str) -> str:
         cur = net
@@ -404,16 +552,31 @@ def validate_netlist(
             f"Scan enable net mismatch: scan cells use '{enable_net_value}', expected '{scan_enable_net}'."
         )
 
+    total_chain_cells = len(visited)
+    chains_found = sum(1 for c in chain_validations if c.cells > 0)
+
+    if auto_chains and chains_found != len(chain_validations):
+        errors.append(
+            f"Expected to validate {len(chain_validations)} chain(s) from ports; "
+            f"reconstructed {chains_found}."
+        )
+
     return ValidationSummary(
         scan_cells_found=len(scan_cells),
-        chains_found=1 if chain else 0,
-        chain_cells=len(chain),
-        start_cell=chain[0] if chain else None,
-        end_cell=chain[-1] if chain else None,
+        chains_found=chains_found,
+        chain_cells=total_chain_cells,
+        start_cell=chain_validations[0].start_cell
+        if len(chain_validations) == 1
+        else None,
+        end_cell=chain_validations[0].end_cell if len(chain_validations) == 1 else None,
         scan_enable_net=enable_net_value,
-        scan_out_source_net=root_driver(scan_out_net),
-        broken_links=broken_links,
-        orphan_cells=max(0, len(scan_cells) - len(chain)),
+        scan_out_source_net=root_driver(chain_validations[0].scan_out_source_net)
+        if len(chain_validations) == 1 and chain_validations[0].scan_out_source_net
+        else None,
+        broken_links=broken_links_total,
+        orphan_cells=orphan_cells,
+        duplicate_cells=duplicate_cells,
+        chains=chain_validations,
         errors=errors,
     )
 
@@ -434,7 +597,18 @@ def main() -> int:
         help="Liberty file to load (repeatable; required with --odb).",
     )
     parser.add_argument("--sdc", type=Path, default=None, help="Optional; used with --odb.")
-    parser.add_argument("--max-chains", type=int, default=1)
+    parser.add_argument(
+        "--max-chains",
+        type=int,
+        default=None,
+        help="Maximum number of scan chains (defaults to 1 unless --max-length is set).",
+    )
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=None,
+        help="Maximum scan chain length in bits (enables multiple chains unless capped by --max-chains).",
+    )
     parser.add_argument("--clock-mixing", default="clock_mix")
     parser.add_argument("--scan-replace", action="store_true")
     parser.add_argument("--execute-dft-plan", action="store_true")
@@ -446,6 +620,13 @@ def main() -> int:
     parser.add_argument("--scan-in", default="scan_in_0")
     parser.add_argument("--scan-out", default="scan_out_0")
     parser.add_argument("--scan-enable", default="scan_enable_0")
+    parser.add_argument(
+        "--auto-chains",
+        action="store_true",
+        help="Auto-detect and validate all scan_in_N/scan_out_N chains from Verilog ports.",
+    )
+    parser.add_argument("--scan-in-prefix", default="scan_in_")
+    parser.add_argument("--scan-out-prefix", default="scan_out_")
     parser.add_argument("--out-json", type=Path, default=None)
     parser.add_argument("--verbose-openroad", action="store_true")
     args = parser.parse_args()
@@ -472,6 +653,9 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="scan_chain_validate_", dir=os.getcwd()) as td:
             tmp_dir = Path(td)
             verilog_path = tmp_dir / "design.v"
+            max_chains: Optional[int] = args.max_chains
+            if max_chains is None and args.max_length is None:
+                max_chains = 1
 
             run_openroad_write_verilog(
                 openroad_exe=openroad_exe,
@@ -479,7 +663,8 @@ def main() -> int:
                 odb=odb,
                 sdc=args.sdc.resolve() if args.sdc else None,
                 out_verilog=verilog_path,
-                max_chains=args.max_chains,
+                max_chains=max_chains,
+                max_length=args.max_length,
                 clock_mixing=args.clock_mixing,
                 do_scan_replace=args.scan_replace,
                 do_execute_dft_plan=args.execute_dft_plan,
@@ -492,21 +677,33 @@ def main() -> int:
                 scan_in=args.scan_in,
                 scan_out=args.scan_out,
                 scan_enable=args.scan_enable,
+                auto_chains=args.auto_chains,
+                scan_in_prefix=args.scan_in_prefix,
+                scan_out_prefix=args.scan_out_prefix,
             )
 
             print(f"scan_cells_found={summary.scan_cells_found}")
             print(f"chains_found={summary.chains_found}")
             print(f"chain_cells={summary.chain_cells}")
-            if summary.start_cell:
-                print(f"start_cell={summary.start_cell}")
-            if summary.end_cell:
-                print(f"end_cell={summary.end_cell}")
-            if summary.scan_out_source_net:
-                print(f"scan_out_source_net={summary.scan_out_source_net}")
+            if summary.chains and len(summary.chains) > 1:
+                for c in summary.chains[:50]:
+                    print(
+                        f"chain scan_in={c.scan_in} scan_out={c.scan_out} "
+                        f"cells={c.cells} start_cell={c.start_cell} end_cell={c.end_cell} "
+                        f"broken_links={c.broken_links}"
+                    )
+            else:
+                if summary.start_cell:
+                    print(f"start_cell={summary.start_cell}")
+                if summary.end_cell:
+                    print(f"end_cell={summary.end_cell}")
+                if summary.scan_out_source_net:
+                    print(f"scan_out_source_net={summary.scan_out_source_net}")
             if summary.scan_enable_net:
                 print(f"scan_enable_net={summary.scan_enable_net}")
             print(f"broken_links={summary.broken_links}")
             print(f"orphan_cells={summary.orphan_cells}")
+            print(f"duplicate_cells={summary.duplicate_cells}")
             for e in summary.errors[:50]:
                 print(f"ERROR: {e}")
 
@@ -525,21 +722,33 @@ def main() -> int:
         scan_in=args.scan_in,
         scan_out=args.scan_out,
         scan_enable=args.scan_enable,
+        auto_chains=args.auto_chains,
+        scan_in_prefix=args.scan_in_prefix,
+        scan_out_prefix=args.scan_out_prefix,
     )
 
     print(f"scan_cells_found={summary.scan_cells_found}")
     print(f"chains_found={summary.chains_found}")
     print(f"chain_cells={summary.chain_cells}")
-    if summary.start_cell:
-        print(f"start_cell={summary.start_cell}")
-    if summary.end_cell:
-        print(f"end_cell={summary.end_cell}")
-    if summary.scan_out_source_net:
-        print(f"scan_out_source_net={summary.scan_out_source_net}")
+    if summary.chains and len(summary.chains) > 1:
+        for c in summary.chains[:50]:
+            print(
+                f"chain scan_in={c.scan_in} scan_out={c.scan_out} "
+                f"cells={c.cells} start_cell={c.start_cell} end_cell={c.end_cell} "
+                f"broken_links={c.broken_links}"
+            )
+    else:
+        if summary.start_cell:
+            print(f"start_cell={summary.start_cell}")
+        if summary.end_cell:
+            print(f"end_cell={summary.end_cell}")
+        if summary.scan_out_source_net:
+            print(f"scan_out_source_net={summary.scan_out_source_net}")
     if summary.scan_enable_net:
         print(f"scan_enable_net={summary.scan_enable_net}")
     print(f"broken_links={summary.broken_links}")
     print(f"orphan_cells={summary.orphan_cells}")
+    print(f"duplicate_cells={summary.duplicate_cells}")
     for e in summary.errors[:50]:
         print(f"ERROR: {e}")
 

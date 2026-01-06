@@ -1,62 +1,293 @@
-# DFT / Scan in ORFS (OpenROAD-flow-scripts)
+# DFT / Scan in ORFS (OpenROAD-flow-scripts) — What We Changed + How To Reproduce
 
-Quickstart: `doc-DFT-howto.md`
+This document summarizes the DFT/scan-chain work done in this repo, with **OpenROAD commit `7bc521f36a` treated as the baseline** and a **vanilla OpenSTA** requirement (no `src/sta` parser changes needed).
 
-This repo wires OpenROAD’s DFT scan insertion into the ORFS flow via **opt-in** hook scripts, plus utilities to measure scan-chain wirelength and validate scan stitching.
+## Goal / Scope
 
-## Required OpenROAD
+- Make OpenROAD’s DFT scan insertion usable in ORFS:
+  - `scan_replace` converts functional flops → scan flops.
+  - `execute_dft_plan` stitches scan chains using placement (wirelength-aware).
+- Ensure it works with **vanilla OpenSTA** (no OpenSTA parser patches required).
+- Provide a practical way to compare:
+  - **7bc521 “baseline DFT”** (broken / mostly no-op) vs
+  - **fixed DFT** (actually produces scan flops + stitched chains),
+  - using QoR proxies and a scan-chain “TSP-like” cost metric.
 
-This branch pins the `tools/OpenROAD` submodule to **OpenROAD-clean-DFT**:
+## Baselines, Branches, and Key Commits
 
-- Base: `7bc521f36a`
-- +1 commit (DFT fixes): `661abebbc3c70c59b4a3991acd176a5cc785f0d4`
+### OpenROAD submodule (`tools/OpenROAD`)
 
-The key point: it works with **vanilla OpenSTA** (no OpenSTA parser patch required).
+- Baseline reference branch: `orfs-baseline-7bc521`
+  - pinned at `7bc521f36a`
+- Fixed DFT/scan branch (vanilla OpenSTA): `orfs-dft-scan`
+  - `ae904a0624` (current)
+  - `5649f22868` (DFT enablement milestone; history)
+- Older variant (kept for history): `orfs-dft-scan-with-opensta`
+  - `5d3e1e243c`
 
-## ORFS Flow Integration (Where DFT Happens)
+### OpenSTA submodule (`tools/OpenROAD/src/sta`)
 
-Two hook scripts are provided:
+- Vanilla OpenSTA used by baseline and final solution:
+  - `d7cb9be1`
+- A prior OpenSTA parser patch was made (not required for the final approach) and preserved:
+  - branch `orfs-sta-scan-nextstate-6d62008a` at commit `6d62008a`
+
+### ORFS top-level (this repo)
+
+- ORFS commit `84cc6b71d`: bumps `tools/OpenROAD` gitlink to `5649f22868`, adds DFT hook scripts under `flow/scripts/`
+- Additional ORFS commits on this branch:
+  - document scan flow + QoR/algorithm notes
+  - add scan-chain validation + visualization tooling
+  - add max-chain-length support in the hook scripts
+
+## What Was Fixed in OpenROAD DFT
+
+### 1) Make scan-cell recognition work with vanilla OpenSTA
+
+Problem:
+- Libraries (e.g., Nangate45) tag scan pins via Liberty `nextstate_type` like `scan_in`, `scan_enable`.
+- Vanilla OpenSTA does **not** reliably surface those pins as `test_scan_*` scan-signal types.
+- Result: OpenROAD DFT often can’t identify scan pins → scan cells not recognized → chains not built.
+
+Fix (final approach):
+- In `tools/OpenROAD/src/dbSta/src/dbSta.cc`, added **fallback inference** by common pin names:
+  - enable: `SE`, `SCE`, `SCAN_EN`, `SCAN_ENABLE`, `SCANENABLE`
+  - in: `SI`, `SCD`, `SCAN_IN`, `SCANIN`
+  - out: `SO`, `SCO`, `SCAN_OUT`, `SCANOUT`
+- This allows DFT to identify scan pins without requiring any `tools/OpenROAD/src/sta` changes.
+
+### 2) Fix scan stitching correctness
+
+Problem:
+- Baseline stitching logic had an iteration/pop bug in `ScanStitch.cpp` that could skip/omit links.
+
+Fix:
+- Rewrote the scan-cell linking loop to deterministically connect:
+  - `scan_in_driver -> first.SI`
+  - `cell[i-1].SO -> cell[i].SI` for all i
+  - `last.SO -> scan_out_load`
+
+### 3) Remove reliance on `sta::TestCell` and improve scan-out handling
+
+Changes in the earlier “with-opensta” variant that were retained/improved:
+- Stop depending on `sta::TestCell` objects.
+- Use `getLibertyScanIn/Enable/Out()` helpers instead.
+- Add scan-out fallback to `Q` if scan-out pin metadata isn’t tagged.
+
+### 4) Add/enable regression coverage
+
+- Added a DFT regression `scan_architect_no_mix_nangate45` and wired it into OpenROAD’s CMake test setup.
+- Verified DFT tests pass in the fixed OpenROAD build (`ctest -R '^dft\.'`).
+
+## ORFS Integration (How DFT Is Hooked Into the Flow)
+
+Two ORFS hook scripts were added:
 
 - `flow/scripts/dft_scan_post_floorplan.tcl`
-  - Intended use: `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl`
-  - Runs after floorplan, before saving `2_1_floorplan.odb`:
-    - `set_dft_config -max_chains 1 -clock_mixing clock_mix`
-    - `scan_replace` (functional flops → scan flops)
-    - creates scan ports: `scan_enable_0`, `scan_in_0`, `scan_out_0`
-    - `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode timing)
+  - Intended to be set via `POST_FLOORPLAN_TCL=...`
+  - Runs:
+    - `set_dft_config` (defaults to 1 chain; configurable via env vars below)
+    - `scan_replace`
+    - infers planned chain count from `report_dft_plan` and creates ports:
+      - `scan_enable_0` (shared enable)
+      - `scan_in_<N>`, `scan_out_<N>` for each planned chain
+    - `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode assumption)
 
 - `flow/scripts/dft_scan_pre_global_route.tcl`
-  - Intended use: `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl`
-  - Runs after CTS, before global routing:
-    - `set_dft_config ...` (must match the post-floorplan config)
-    - `set_case_analysis 0 [get_ports scan_enable_0]`
-    - `execute_dft_plan` (stitches the scan chain using placement)
+  - Intended to be set via `PRE_GLOBAL_ROUTE_TCL=...`
+  - Runs:
+    - `set_dft_config ...` (must match; see env vars below)
+    - `set_case_analysis 0 ...`
+    - `execute_dft_plan` (stitch chains)
 
 Notes:
-- The scripts currently hardcode `-max_chains 1` to keep scan I/O stable for comparisons.
-- `set_case_analysis 0` ensures STA uses functional-mode arcs for scan flops.
+- This wiring is **opt-in**: you enable it by setting `POST_FLOORPLAN_TCL` and `PRE_GLOBAL_ROUTE_TCL` when you run `make -C flow ...`.
+- The scripts set scan port name patterns explicitly:
+  - enable: `scan_enable_{}`
+  - in/out: `scan_in_{}`, `scan_out_{}`
+- Configuration env vars (optional):
+  - `DFT_CLOCK_MIXING` (default `clock_mix`)
+  - `DFT_MAX_CHAINS` (default `1` unless `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH` is set)
+  - `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH` (max bits per chain; enables multiple chains)
 
-## OpenROAD-side Fixes (Summary)
+## Reproduction: Baseline vs Fixed DFT (QoR Proxy Comparison)
 
-The OpenROAD-clean-DFT commit includes the minimum required fixes to make DFT “alive” on top of `7bc521f36a`:
+### Design used
 
-- Scan pin identification works in vanilla STA (`src/dbSta/src/dbSta.cc`):
-  - removes an overly-strict `extPort()` guard
-  - adds/uses fallback scan pin inference by common names (`SI/SE/SO`, etc.)
-- DFT correctness fixes and functionality (DFT subsystem):
-  - scan stitching fixes (no dropped links)
-  - avoids reliance on `sta::TestCell`
-  - scan-out fallback behavior
-  - includes a small DFT regression (`scan_architect_no_mix_nangate45`)
+- `nangate45/ibex` (`flow/designs/nangate45/ibex/config.mk`)
 
-## Scan-Ordering Benchmark (OpenROAD vs Nearest-Neighbor)
+### OpenROAD executables used
 
-`flow/util/scan_chain_cost.py` runs OpenROAD’s `report_dft_plan -verbose`, computes total Manhattan scan-chain length, and can also compute a simple nearest-neighbor (NN) heuristic for comparison.
+- Fixed OpenROAD (DFT works): `tools/OpenROAD/build_gate7bc521/bin/openroad` (reports `v2.0-26265-gae904a0624`)
+- Baseline OpenROAD 7bc521 (DFT mostly broken): `tools/OpenROAD_7bc521/build_gate7bc521/bin/openroad`
+  - built from a detached worktree at `7bc521f36a` (version string prints `HEAD-HASH-NOTFOUND` due to git-describe failure in that worktree)
 
-Opt/NN results (lower is better; `openroad_over_nn < 1` means OpenROAD is shorter than NN):
+### Flow commands
 
-| platform | design | flops | openroad_um | nn_um | openroad_over_nn |
-|---|---|---:|---:|---:|---:|
+- Baseline (no DFT):
+  - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_base_20260104 OPENROAD_EXE=$(pwd)/tools/OpenROAD/build_gate7bc521/bin/openroad finish`
+- Fixed DFT enabled:
+  - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_dft_20260104 OPENROAD_EXE=$(pwd)/tools/OpenROAD/build_gate7bc521/bin/openroad POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl finish`
+- Baseline OpenROAD 7bc521 “DFT enabled” (shows it’s broken/no-op):
+  - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_dft_or7bc521_20260104 OPENROAD_EXE=$(pwd)/tools/OpenROAD_7bc521/build_gate7bc521/bin/openroad POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl finish`
+
+### QoR snapshot (finish metrics)
+
+From `flow/logs/nangate45/ibex/<variant>/6_report.json` and `5_2_route.json`:
+
+- no DFT (`qor_scan_base_20260104`):
+  - instance area `29091.6`
+  - sequential area `10065.2`
+  - total power `0.0960477`
+  - setup WS `-0.0211463`
+  - detailed-route WL `256015`
+- “DFT enabled” but OpenROAD 7bc521 broken (`qor_scan_dft_or7bc521_20260104`):
+  - instance area `29106`
+  - sequential area `10065.2`
+  - total power `0.0961684`
+  - setup WS `-0.0240458`
+  - detailed-route WL `256612`
+  - `report_dft_plan` shows **0 chains** (scan cells not recognized)
+- fixed DFT (`qor_scan_dft_20260104`):
+  - instance area `31790.5` (+~9.3%)
+  - sequential area `12702.3` (+~26.2%)
+  - total power `0.0995975` (+~3.7%)
+  - setup WS `-0.029858`
+  - detailed-route WL `278902` (+~8.9%)
+  - `report_dft_plan` shows **1 chain / 1931 scan cells**
+
+Interpretation:
+- Comparing DFT vs no-DFT: PPA generally degrades due to bigger flops + new scan nets.
+- The valid “DFT QoR” story is DFT-vs-DFT (reduce overhead vs naive chain ordering / too-few chains), not DFT vs no-DFT.
+
+### QoR snapshot (ibex, Nangate45, OpenROAD v2.0-26265-gae904a0624)
+
+Runs:
+- no DFT:
+  - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_base_20260106_or26264 OPENROAD_EXE=$(pwd)/tools/OpenROAD/build_gate7bc521/bin/openroad finish`
+- DFT 1 chain:
+  - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_dft_1chain_20260106_or26264 OPENROAD_EXE=$(pwd)/tools/OpenROAD/build_gate7bc521/bin/openroad POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl finish`
+- DFT max chain length examples:
+  - 2 chains (`DFT_MAX_CHAIN_LENGTH=1000`):
+    - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_dft_maxlen1000_20260106_or26264 OPENROAD_EXE=$(pwd)/tools/OpenROAD/build_gate7bc521/bin/openroad POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl DFT_MAX_CHAIN_LENGTH=1000 finish`
+  - 10 chains (`DFT_MAX_CHAIN_LENGTH=200`):
+    - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=qor_scan_dft_maxlen200_20260106_or26264 OPENROAD_EXE=$(pwd)/tools/OpenROAD/build_gate7bc521/bin/openroad POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl DFT_MAX_CHAIN_LENGTH=200 finish`
+
+Extracted from `flow/logs/nangate45/ibex/<variant>/6_report.json` and `5_2_route.json`:
+
+| variant | chains | setup WS | detailed-route WL |
+| --- | ---: | ---: | ---: |
+| `qor_scan_base_20260106_or26264` | 0 | `-0.0211463` | `256015` |
+| `qor_scan_dft_1chain_20260106_or26264` | 1 | `-0.0264127` | `277653` |
+| `qor_scan_dft_maxlen1000_20260106_or26264` | 2 | `-0.0247976` | `277722` |
+| `qor_scan_dft_maxlen500_20260106_or26264` | 4 | `-0.0440121` | `278920` |
+| `qor_scan_dft_maxlen200_20260106_or26264` | 10 | `-0.0377615` | `282104` |
+
+Notes:
+- More scan chains increases scan port count; in this setup, too many chains can hurt QoR due to extra scan-in/out routing to placed ports.
+- `DFT_MAX_CHAIN_LENGTH=1000` (2 chains) is a reasonable “first cut” on `ibex` here: WL is essentially unchanged vs 1 chain and setup slack is slightly improved.
+
+## Scan-Chain Optimizer Algorithm (Hamiltonian Path / “TSP path” Heuristic)
+
+This is the core of `execute_dft_plan` / `scan_opt`: given placed scan flops, produce an ordering (one or more directed paths) that heuristically minimizes scan-wirelength.
+
+### What is optimized
+
+Per scan chain, minimize a proxy cost:
+
+- `cost = Σ ManhattanDist(p[i], p[i+1])`
+- where `p[i]` is the *placed instance location* (OpenDB `dbInst::getLocation()`), not the exact SI/SO pin location.
+
+The optimization target is therefore a **Hamiltonian path** problem (a “TSP path” variant, not a cycle).
+
+### Code pointers (OpenROAD)
+
+Planning entrypoints:
+- `tools/OpenROAD/src/dft/src/Dft.cpp`
+  - `Dft::reportDftPlan()` → `scanArchitect()`
+  - `Dft::executeDftPlan()` → `scanArchitect()` + `ScanStitch::Stitch()`
+  - `Dft::scanOpt()` → `scanArchitect()` + `ScanStitch::Stitch()` (re-stitch on latest placement)
+
+Chain count inference (`max_length` / `max_chains`):
+- `tools/OpenROAD/src/dft/src/architect/ScanArchitect.cpp`
+  - `ScanArchitect::inferChainCountFromMaxLength()`
+  - `ScanArchitect::createScanChains()`
+
+Partition + per-chain ordering:
+- `tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`
+  - `ScanArchitectHeuristic::architect()`:
+    - distributes scan cells over chains
+    - when multiple chains are enabled and scan cells are placed, partitions scan cells by `(x,y)` location to keep each chain spatially local
+    - runs the per-chain optimizer for falling-edge and rising-edge subsets
+
+Per-chain optimizer (heuristic TSP-path):
+- `tools/OpenROAD/src/dft/src/architect/Opt.cpp`
+  - `OptimizeScanWirelength()`:
+    - start node: lower-leftmost cell (min `x+y`, tie-break by instance name)
+    - construction: greedy nearest-neighbor and farthest-insertion (bounded to `~10k` cells)
+    - local improvement: bounded 2-opt passes (bounds depend on chain length)
+    - large-chain fallback: rtree-based nearest candidate search
+
+Physical stitching (netlist update):
+- `tools/OpenROAD/src/dft/src/stitch/ScanStitch.cpp`
+  - `ScanStitch::Stitch()`:
+    - connects `scan_enable` to all scan flops
+    - connects `scan_in` → first SI
+    - connects `SO(i)` → `SI(i+1)`
+    - connects last SO → `scan_out`
+
+Location proxy + scan net sigtype:
+- `tools/OpenROAD/src/dft/src/cells/OneBitScanCell.cpp` (`OneBitScanCell::getOrigin()` uses placement location)
+- `tools/OpenROAD/src/dft/src/cells/ScanCell.hh` (`Connect()` sets newly created scan nets to `odb::dbSigType::SCAN`)
+
+## “Traveling Salesman”-Style Metric (Scan Chain Cost)
+
+To quantify “how good” a scan chain ordering is, we added:
+
+- `flow/util/scan_chain_cost.py`
+
+What it computes:
+- Parses OpenROAD `report_dft_plan -verbose` to get the scan-cell order per chain.
+- Extracts placed instance locations (DEF `PLACED` coordinates) by writing a DEF (`write_def`) and parsing the `COMPONENTS` section.
+- Computes:
+  - chain path length = sum Manhattan distance between consecutive scan cells in that order
+  - a naive baseline = same cost for lexicographic instance order (`sorted(inst_names)`)
+
+Note:
+- The metric intentionally uses DEF `PLACED` coordinates (OpenDB `dbInst::getLocation()`), since `dbInst::getOrigin()` is orientation-dependent (e.g. MX/MY) and can skew comparisons/optimization.
+
+### Example usage
+
+- On a DFT-run placed DB:
+  - `python3 flow/util/scan_chain_cost.py --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_20260104/3_5_place_dp.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_20260104/3_place.sdc`
+- With a simple “TSP-ish” nearest-neighbor baseline:
+  - `python3 flow/util/scan_chain_cost.py --nearest-neighbor --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_20260104/3_5_place_dp.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_20260104/3_place.sdc`
+- With a max chain length (enables multiple chains):
+  - `python3 flow/util/scan_chain_cost.py --max-length 1000 --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_1chain_20260106_or26264/4_cts.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_1chain_20260106_or26264/4_cts.sdc`
+- Visualize scan ordering (SVG):
+  - `python3 flow/util/scan_chain_cost.py --out-svg temp-stash/scan.svg --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_1chain_20260106_or26264/4_cts.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_1chain_20260106_or26264/4_cts.sdc`
+- On a no-DFT placed DB (compute hypothetical scan cost by doing `scan_replace` in-memory, without re-placement):
+  - `python3 flow/util/scan_chain_cost.py --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_base_20260104/3_5_place_dp.odb --sdc flow/results/nangate45/ibex/qor_scan_base_20260104/3_place.sdc --scan-replace`
+
+### Observed results (ibex, 1 chain)
+
+- DFT (1 chain, `4_cts.odb`): `manhattan_um=9409.420`, naive lexicographic `90306.230` (ratio `9.597x`)
+- no-DFT placed + hypothetical scan: `manhattan_um=9197.880`, naive `93778.840` (ratio `10.196x`)
+
+Why DFT vs no-DFT chain cost is similar here:
+- The scan chain cost is dominated by **where flops are placed** in the design.
+- For `ibex` at this utilization, scan insertion didn’t significantly perturb placement, so the chain path length barely changes.
+
+What *does* show up clearly:
+- The new scan/control nets. Example (fixed DFT, routed DB):
+  - `report_wire_length -net {scan_enable_0} -detailed_route` → `8033.45um`
+
+### Optimizer benchmark (OpenROAD opt vs nearest-neighbor)
+
+On the 9-design suite (`aes/ibex/jpeg × nangate45/asap7/sky130hd`), using `flow/util/scan_chain_cost.py --scan-replace --nearest-neighbor` on placed ODBs (so scan flops are inserted in-memory, then the chain is planned/ordered from the placement database):
+
+| platform | design | cells | OpenROAD opt (um) | NN (um) | opt/NN |
+| --- | --- | ---: | ---: | ---: | ---: |
 | nangate45 | aes | 562 | 3571.680 | 4178.080 | 0.855 |
 | nangate45 | ibex | 1931 | 9197.880 | 10545.640 | 0.872 |
 | nangate45 | jpeg | 4390 | 17903.670 | 20815.750 | 0.860 |
@@ -70,15 +301,23 @@ Opt/NN results (lower is better; `openroad_over_nn < 1` means OpenROAD is shorte
 Avg `opt/NN` = `0.865` (~`13.5%` shorter than NN).
 
 Reproduce (single design):
-
-- `python3 flow/util/scan_chain_cost.py --scan-replace --nearest-neighbor --openroad tools/install/OpenROAD/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/cmp9_or0db856_rp100_20251229_022425/3_5_place_dp.odb --sdc flow/results/nangate45/ibex/cmp9_or0db856_rp100_20251229_022425/3_place.sdc`
+- `python3 flow/util/scan_chain_cost.py --scan-replace --nearest-neighbor --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/cmp9_or0db856_rp100_20251229_022425/3_5_place_dp.odb --sdc flow/results/nangate45/ibex/cmp9_or0db856_rp100_20251229_022425/3_place.sdc`
 
 Notes:
 - ASAP7 needs multiple libs; pass them all, e.g. `--liberty flow/platforms/asap7/lib/NLDM/*_TT_*`.
 
-## Scan-Chain Integrity Validation (Does It Actually Shift?)
+## Current Limitations / Known Gaps
 
-QoR deltas and plan reports are necessary but not sufficient; we also want a basic structural check that the scan path is one continuous chain from `scan_in_0` to `scan_out_0`.
+- `scan_opt` is implemented in OpenROAD DFT and re-stitches scan chains using the latest placement
+  (without re-running `scan_replace`). The scan-chain optimizer uses NN + farthest-insertion + bounded 2-opt (with an rtree fallback for huge chains).
+- ORFS exposes `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune the number/length of scan chains; the “best” point is design-dependent and also depends on scan port placement.
+- Clock-domain correctness constraints (lockups, strict no-mix, etc.) are not yet wired through ORFS configuration beyond `-clock_mixing`.
+
+## Scan-Chain Integrity Validation (Does it Actually Shift?)
+
+QoR deltas and plan reports are necessary but not sufficient; we also want a basic structural check that scan stitching is structurally correct:
+- each chain is one continuous path from `scan_in_<N>` to `scan_out_<N>`
+- every scan flop appears exactly once across all chains
 
 - `flow/util/scan_chain_validate.py` validates scan stitching from a gate-level netlist (or from an ODB by writing a temporary netlist via OpenROAD).
 - It treats `assign` + inserted `BUF*/CLKBUF*` as transparent, so post-P&R buffering doesn’t cause false failures.
@@ -86,7 +325,8 @@ QoR deltas and plan reports are necessary but not sufficient; we also want a bas
 Example usage:
 
 - Validate a finished netlist:
-  - `python3 flow/util/scan_chain_validate.py --verilog flow/results/nangate45/ibex/with_dft/6_final.v`
+  - `python3 flow/util/scan_chain_validate.py --verilog flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.v`
+- Validate multi-chain scan stitching (auto-detect `scan_in_N`/`scan_out_N` ports):
+  - `python3 flow/util/scan_chain_validate.py --auto-chains --verilog flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106_or26264/6_final.v`
 - Validate from an ODB (writes a temp netlist first):
-  - `python3 flow/util/scan_chain_validate.py --odb flow/results/nangate45/ibex/with_dft/6_final.odb --openroad tools/install/OpenROAD/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --sdc flow/results/nangate45/ibex/with_dft/6_final.sdc --ensure-ports`
-
+  - `python3 flow/util/scan_chain_validate.py --odb flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.odb --openroad tools/OpenROAD/build_gate7bc521/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --sdc flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.sdc --ensure-ports`
