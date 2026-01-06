@@ -11,6 +11,16 @@ proc global_route_helper { } {
   set res_aware ""
   append_env_var res_aware ENABLE_RESISTANCE_AWARE -resistance_aware 0
 
+  set allow_congestion ""
+  if { [env_var_exists_and_non_empty GLOBAL_ROUTE_ARGS] } {
+    # If global_route is configured to allow congestion, ensure incremental
+    # global_route calls inherit that behavior (otherwise they can fail even
+    # when the initial global_route used -allow_congestion).
+    if { [lsearch -exact $::env(GLOBAL_ROUTE_ARGS) -allow_congestion] >= 0 } {
+      set allow_congestion -allow_congestion
+    }
+  }
+
   proc do_global_route { res_aware } {
     set all_args [concat [list \
       -congestion_report_file $::global_route_congestion_report] \
@@ -61,10 +71,10 @@ proc global_route_helper { } {
 
     # Running DPL to fix overlapped instances
     # Run to get modified net by DPL
-    log_cmd global_route -start_incremental
+    log_cmd global_route -start_incremental $allow_congestion
     log_cmd detailed_placement
     # Route only the modified net by DPL
-    log_cmd global_route -end_incremental {*}$res_aware \
+    log_cmd global_route -end_incremental {*}$res_aware $allow_congestion \
       -congestion_report_file $::env(REPORTS_DIR)/congestion_post_repair_design.rpt
 
     # Repair timing using global route parasitics
@@ -79,18 +89,18 @@ proc global_route_helper { } {
 
     # Running DPL to fix overlapped instances
     # Run to get modified net by DPL
-    log_cmd global_route -start_incremental
+    log_cmd global_route -start_incremental $allow_congestion
     log_cmd detailed_placement
     # Route only the modified net by DPL
-    log_cmd global_route -end_incremental {*}$res_aware \
+    log_cmd global_route -end_incremental {*}$res_aware $allow_congestion \
       -congestion_report_file $::env(REPORTS_DIR)/congestion_post_repair_timing.rpt
   }
 
 
-  log_cmd global_route -start_incremental
+  log_cmd global_route -start_incremental $allow_congestion
   recover_power_helper
   # Route the modified nets by rsz journal restore
-  log_cmd global_route -end_incremental {*}$res_aware \
+  log_cmd global_route -end_incremental {*}$res_aware $allow_congestion \
     -congestion_report_file $::env(REPORTS_DIR)/congestion_post_recover_power.rpt
 
   if {
