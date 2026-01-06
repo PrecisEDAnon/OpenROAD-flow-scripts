@@ -126,6 +126,7 @@ configuration file.
 | <a name="DESIGN_NICKNAME"></a>DESIGN_NICKNAME| DESIGN_NICKNAME just changes the directory name that ORFS outputs to be DESIGN_NICKNAME instead of DESIGN_NAME in case DESIGN_NAME is unwieldy or conflicts with a different design.| |
 | <a name="DETAILED_METRICS"></a>DETAILED_METRICS| If set, then calls report_metrics prior to repair operations in the CTS and global route stages| 0|
 | <a name="DETAILED_ROUTE_ARGS"></a>DETAILED_ROUTE_ARGS| Add additional arguments for debugging purposes during detail route.| |
+| <a name="DETAILED_ROUTE_EXTRA_ARGS"></a>DETAILED_ROUTE_EXTRA_ARGS| Appends additional arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS`.| |
 | <a name="DETAILED_ROUTE_END_ITERATION"></a>DETAILED_ROUTE_END_ITERATION| Maximum number of iterations.| 64|
 | <a name="DFF_LIB_FILES"></a>DFF_LIB_FILES| Technology mapping liberty files for flip-flops.| |
 | <a name="DFF_MAP_FILE"></a>DFF_MAP_FILE| Optional mapping file supplied to Yosys to map D flip-flops| |
@@ -459,6 +460,7 @@ configuration file.
 ## route variables
 
 - [DETAILED_ROUTE_ARGS](#DETAILED_ROUTE_ARGS)
+- [DETAILED_ROUTE_EXTRA_ARGS](#DETAILED_ROUTE_EXTRA_ARGS)
 - [DETAILED_ROUTE_END_ITERATION](#DETAILED_ROUTE_END_ITERATION)
 - [FILL_CELLS](#FILL_CELLS)
 - [MATCH_CELL_FOOTPRINT](#MATCH_CELL_FOOTPRINT)
@@ -545,4 +547,3 @@ configuration file.
 - [TAP_CELL_NAME](#TAP_CELL_NAME)
 - [TECH_LEF](#TECH_LEF)
 - [USE_FILL](#USE_FILL)
-

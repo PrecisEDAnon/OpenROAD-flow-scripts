@@ -45,6 +45,10 @@ set arguments [expr {
   [concat $additional_args {-drc_report_iter_step 5}]
 }]
 
+if { [env_var_exists_and_non_empty DETAILED_ROUTE_EXTRA_ARGS] } {
+  set arguments [concat $arguments $::env(DETAILED_ROUTE_EXTRA_ARGS)]
+}
+
 set all_args [concat [list \
   -output_drc $::env(REPORTS_DIR)/5_route_drc.rpt \
   -output_maze $::env(RESULTS_DIR)/maze.log] \
