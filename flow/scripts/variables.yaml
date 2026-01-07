@@ -483,12 +483,14 @@ IO_PLACER_H:
     of the die).
   stages:
     - place
+    - grt
 IO_PLACER_V:
   description: >
     A list of metal layers on which the I/O pins are placed vertically (sides of the
     die).
   stages:
     - place
+    - grt
 GUI_TIMING:
   description: >
     Load timing information when opening GUI. For large designs, this can be

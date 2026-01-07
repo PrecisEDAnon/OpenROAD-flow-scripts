@@ -68,7 +68,7 @@ proc dft_ensure_scan_port {port_name io_type} {
 }
 
 # Infer how many chains will be created with the current DFT config so we can
-# create and place the right number of scan ports before IO placement.
+# create the right number of scan ports before IO placement.
 set chain_count 1
 with_output_to_variable dft_plan_str { report_dft_plan }
 if { ![regexp {Number of chains:\s*([0-9]+)} $dft_plan_str -> chain_count] } {
