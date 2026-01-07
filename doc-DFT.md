@@ -97,6 +97,9 @@ Two ORFS hook scripts were added:
   - Intended to be set via `PRE_GLOBAL_ROUTE_TCL=...`
   - Runs:
     - `set_dft_config ...` (must match; see env vars below)
+    - places scan I/O ports near their chain endpoints (reduces multi-chain “stem” wirelength):
+      - controlled by `DFT_PLACE_SCAN_PORTS` (default `1`)
+      - optional `DFT_PLACE_SCAN_ENABLE_PORT=1` to also re-place `scan_enable_0`
     - `set_case_analysis 0 ...`
     - `execute_dft_plan` (stitch chains)
 
@@ -109,6 +112,8 @@ Notes:
   - `DFT_CLOCK_MIXING` (default `clock_mix`)
   - `DFT_MAX_CHAINS` (default `1` unless `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH` is set)
   - `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH` (max bits per chain; enables multiple chains)
+  - `DFT_PLACE_SCAN_PORTS` (default `1`; re-place `scan_in_N`/`scan_out_N` near chain endpoints)
+  - `DFT_PLACE_SCAN_ENABLE_PORT` (default `0`; also re-place `scan_enable_0`)
 
 ## Reproduction: Baseline vs Fixed DFT (QoR Proxy Comparison)
 
@@ -185,6 +190,7 @@ Extracted from `flow/logs/nangate45/ibex/<variant>/6_report.json` and `5_2_route
 
 Notes:
 - More scan chains increases scan port count; in this setup, too many chains can hurt QoR due to extra scan-in/out routing to placed ports.
+- The scan-chain optimizer minimizes **intra-chain** wirelength (flop→flop). The remaining big lever is the **scan-in/out “stem”** routing (port→chain endpoint), which is dominated by scan port placement — especially for multi-chain.
 - `DFT_MAX_CHAIN_LENGTH=1000` (2 chains) is a reasonable “first cut” on `ibex` here: WL is essentially unchanged vs 1 chain and setup slack is slightly improved.
 
 ## Scan-Chain Optimizer Algorithm (Hamiltonian Path / “TSP path” Heuristic)
@@ -310,7 +316,7 @@ Notes:
 
 - `scan_opt` is implemented in OpenROAD DFT and re-stitches scan chains using the latest placement
   (without re-running `scan_replace`). The scan-chain optimizer uses NN + farthest-insertion + bounded 2-opt (with an rtree fallback for huge chains).
-- ORFS exposes `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune the number/length of scan chains; the “best” point is design-dependent and also depends on scan port placement.
+- ORFS exposes `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS mitigates this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (`DFT_PLACE_SCAN_PORTS=1`).
 - Clock-domain correctness constraints (lockups, strict no-mix, etc.) are not yet wired through ORFS configuration beyond `-clock_mixing`.
 
 ## Scan-Chain Integrity Validation (Does it Actually Shift?)
