@@ -316,7 +316,7 @@ Notes:
 
 - `scan_opt` is implemented in OpenROAD DFT and re-stitches scan chains using the latest placement
   (without re-running `scan_replace`). The scan-chain optimizer uses NN + farthest-insertion + bounded 2-opt (with an rtree fallback for huge chains).
-- ORFS exposes `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS mitigates this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (`DFT_PLACE_SCAN_PORTS=1`).
+- ORFS exposes `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS can mitigate this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (enable with `DFT_PLACE_SCAN_PORTS=1`).
 - Clock-domain correctness constraints (lockups, strict no-mix, etc.) are not yet wired through ORFS configuration beyond `-clock_mixing`.
 
 ## Scan-Chain Integrity Validation (Does it Actually Shift?)
