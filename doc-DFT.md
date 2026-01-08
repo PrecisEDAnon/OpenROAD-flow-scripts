@@ -98,7 +98,7 @@ Two ORFS hook scripts were added:
   - Runs:
     - `set_dft_config ...` (must match; see env vars below)
     - places scan I/O ports near their chain endpoints (reduces multi-chain “stem” wirelength):
-      - controlled by `DFT_PLACE_SCAN_PORTS` (default `1`)
+      - controlled by `DFT_PLACE_SCAN_PORTS` (default `0`, opt-in)
       - optional `DFT_PLACE_SCAN_ENABLE_PORT=1` to also re-place `scan_enable_0`
     - `set_case_analysis 0 ...`
     - `execute_dft_plan` (stitch chains)
@@ -112,7 +112,7 @@ Notes:
   - `DFT_CLOCK_MIXING` (default `clock_mix`)
   - `DFT_MAX_CHAINS` (default `1` unless `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH` is set)
   - `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH` (max bits per chain; enables multiple chains)
-  - `DFT_PLACE_SCAN_PORTS` (default `1`; re-place `scan_in_N`/`scan_out_N` near chain endpoints)
+  - `DFT_PLACE_SCAN_PORTS` (default `0`; re-place `scan_in_N`/`scan_out_N` near chain endpoints)
   - `DFT_PLACE_SCAN_ENABLE_PORT` (default `0`; also re-place `scan_enable_0`)
 
 ## Reproduction: Baseline vs Fixed DFT (QoR Proxy Comparison)
