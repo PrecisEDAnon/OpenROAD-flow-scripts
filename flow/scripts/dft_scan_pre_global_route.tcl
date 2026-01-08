@@ -277,7 +277,7 @@ proc dft_place_pin_near_inst {pin_name inst_name} {
 proc dft_place_scan_ports_from_plan {} {
   # Place scan ports near their corresponding chain endpoints to reduce scan
   # I/O wirelength (especially when multiple chains are enabled).
-  set place_scan_ports [dft_get_env_bool DFT_PLACE_SCAN_PORTS 1]
+  set place_scan_ports [dft_get_env_bool DFT_PLACE_SCAN_PORTS 0]
   if { !$place_scan_ports } {
     puts "DFT: skipping scan pin placement (DFT_PLACE_SCAN_PORTS=0)"
     return
@@ -290,26 +290,29 @@ proc dft_place_scan_ports_from_plan {} {
   set plan ""
   with_output_to_variable plan { report_dft_plan -verbose }
 
-  set chain_first [dict create]
-  set chain_last [dict create]
-  set current_chain ""
+  # OpenROAD stitches scan chains in lexicographic chain-name order, and uses
+  # that ordinal to select scan_in_N/scan_out_N. Mirror that here so scan port
+  # placement targets the correct chain endpoints.
+  set chain_first_by_name [dict create]
+  set chain_last_by_name [dict create]
+  set current_chain_name ""
   set first_cell ""
   set last_cell ""
 
   foreach line [split $plan "\n"] {
-    if { [regexp {^Scan chain 'chain_([0-9]+)'} $line -> idx] } {
+    if { [regexp {^Scan chain '([^']+)'} $line -> chain_name] } {
       # Flush any previous chain.
-      if { $current_chain != "" && $first_cell != "" } {
-        dict set chain_first $current_chain $first_cell
-        dict set chain_last $current_chain $last_cell
+      if { $current_chain_name != "" } {
+        dict set chain_first_by_name $current_chain_name $first_cell
+        dict set chain_last_by_name $current_chain_name $last_cell
       }
-      set current_chain $idx
+      set current_chain_name $chain_name
       set first_cell ""
       set last_cell ""
       continue
     }
 
-    if { $current_chain != "" } {
+    if { $current_chain_name != "" } {
       if { [regexp {^\s+([^\s]+)} $line -> token] } {
         set cell_name $token
         if { $first_cell == "" } {
@@ -320,23 +323,30 @@ proc dft_place_scan_ports_from_plan {} {
       }
     }
   }
-  if { $current_chain != "" && $first_cell != "" } {
-    dict set chain_first $current_chain $first_cell
-    dict set chain_last $current_chain $last_cell
+  if { $current_chain_name != "" } {
+    dict set chain_first_by_name $current_chain_name $first_cell
+    dict set chain_last_by_name $current_chain_name $last_cell
   }
 
   # Place scan_in/out for each chain near its first/last scan cell.
-  foreach idx [lsort -integer [dict keys $chain_first]] {
-    set in_port "scan_in_$idx"
-    set out_port "scan_out_$idx"
+  set chain_names [lsort -ascii [dict keys $chain_first_by_name]]
+  set ordinal 0
+  foreach chain_name $chain_names {
+    set in_port "scan_in_$ordinal"
+    set out_port "scan_out_$ordinal"
     dft_ensure_scan_port $in_port INPUT
     dft_ensure_scan_port $out_port OUTPUT
 
-    set first [dict get $chain_first $idx]
-    set last [dict get $chain_last $idx]
+    set first [dict get $chain_first_by_name $chain_name]
+    set last [dict get $chain_last_by_name $chain_name]
 
-    dft_place_pin_near_inst $in_port $first
-    dft_place_pin_near_inst $out_port $last
+    if { $first != "" } {
+      dft_place_pin_near_inst $in_port $first
+    }
+    if { $last != "" } {
+      dft_place_pin_near_inst $out_port $last
+    }
+    incr ordinal
   }
 
   # Optional: place scan_enable too (default off; it is a large-fanout net and
