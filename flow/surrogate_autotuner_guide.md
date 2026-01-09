@@ -109,6 +109,17 @@ Notes:
 - `density_margin_addon` maps to `PLACE_DENSITY_LB_ADDON`, which overrides `PLACE_DENSITY` in ORFS when set.
 - Routing adjust knobs use a simple split: first two routing layers get `PIN_LAYER_ADJUST`, and the rest get `ABOVE_LAYER_ADJUST` (fallback is the platform default when unset).
 
+### 4.3) Choose the optimization objective (`SURROGATE_OBJECTIVE`)
+
+The surrogate autotuner supports a small, fixed set of objective names
+(default: `effective_clock_period`):
+
+- `effective_clock_period`
+- `routed_wirelength`
+- `power`
+- `instance_area`
+- `area`
+
 ### A) Fast tuning on one synthesized netlist
 
 ```bash
