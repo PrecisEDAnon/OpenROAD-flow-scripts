@@ -110,8 +110,9 @@ Notes:
   - in/out: `scan_in_{}`, `scan_out_{}`
 - Configuration env vars (optional):
   - `DFT_CLOCK_MIXING` (default `clock_mix`)
-  - `DFT_MAX_CHAINS` (default `1` unless `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH` is set)
-  - `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH` (max bits per chain; enables multiple chains)
+  - `DFT_CHAIN_COUNT` (exact chains; takes priority over `DFT_MAX_CHAINS`)
+  - `DFT_MAX_CHAINS` (max chains; default `1` unless `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH` is set)
+  - `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH` (max bits per chain; when `DFT_CHAIN_COUNT` is set this becomes a per-chain cap; otherwise it can enable multiple chains via chain-count inference)
   - `DFT_PLACE_SCAN_PORTS` (default `0`; re-place `scan_in_N`/`scan_out_N` near chain endpoints)
   - `DFT_PLACE_SCAN_ENABLE_PORT` (default `0`; also re-place `scan_enable_0`)
 
@@ -214,8 +215,9 @@ Planning entrypoints:
   - `Dft::executeDftPlan()` → `scanArchitect()` + `ScanStitch::Stitch()`
   - `Dft::scanOpt()` → `scanArchitect()` + `ScanStitch::Stitch()` (re-stitch on latest placement)
 
-Chain count inference (`max_length` / `max_chains`):
+Chain count inference (`chain_count` / `max_length` / `max_chains`):
 - `tools/OpenROAD/src/dft/src/architect/ScanArchitect.cpp`
+  - `ScanArchitect::inferChainCount()`
   - `ScanArchitect::inferChainCountFromMaxLength()`
   - `ScanArchitect::createScanChains()`
 
@@ -223,7 +225,7 @@ Partition + per-chain ordering:
 - `tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`
   - `ScanArchitectHeuristic::architect()`:
     - distributes scan cells over chains
-    - when multiple chains are enabled and scan cells are placed, partitions scan cells by `(x,y)` location to keep each chain spatially local
+    - when multiple chains are enabled and scan cells are placed, clusters scan cells using placement-aware reassignment (swap/move) to keep each chain spatially local (subject to per-chain max length)
     - runs the per-chain optimizer for falling-edge and rising-edge subsets
 
 Per-chain optimizer (heuristic TSP-path):
@@ -316,7 +318,7 @@ Notes:
 
 - `scan_opt` is implemented in OpenROAD DFT and re-stitches scan chains using the latest placement
   (without re-running `scan_replace`). The scan-chain optimizer uses NN + farthest-insertion + bounded 2-opt (with an rtree fallback for huge chains).
-- ORFS exposes `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS can mitigate this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (enable with `DFT_PLACE_SCAN_PORTS=1`).
+- ORFS exposes `DFT_CHAIN_COUNT` / `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS can mitigate this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (enable with `DFT_PLACE_SCAN_PORTS=1`).
 - Clock-domain correctness constraints (lockups, strict no-mix, etc.) are not yet wired through ORFS configuration beyond `-clock_mixing`.
 
 ## Scan-Chain Integrity Validation (Does it Actually Shift?)

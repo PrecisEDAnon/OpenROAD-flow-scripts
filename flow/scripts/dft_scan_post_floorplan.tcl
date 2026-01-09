@@ -18,6 +18,7 @@ proc dft_get_env {name default_value} {
 # using a single scan chain.
 #
 # To enable multiple chains, set either:
+#   - DFT_CHAIN_COUNT (exact),
 #   - DFT_MAX_CHAINS (explicit cap), and/or
 #   - DFT_MAX_CHAIN_LENGTH (aka DFT_MAX_LENGTH) to bound chain length in bits.
 set clock_mixing [dft_get_env DFT_CLOCK_MIXING "clock_mix"]
@@ -26,8 +27,10 @@ if { $max_length == "" } {
   set max_length [dft_get_env DFT_MAX_LENGTH ""]
 }
 
+set chain_count [dft_get_env DFT_CHAIN_COUNT ""]
+
 set max_chains [dft_get_env DFT_MAX_CHAINS ""]
-if { $max_chains == "" && $max_length == "" } {
+if { $chain_count == "" && $max_chains == "" && $max_length == "" } {
   set max_chains 1
 }
 
@@ -40,7 +43,9 @@ set dft_args [list \
 if { $max_length != "" } {
   lappend dft_args -max_length $max_length
 }
-if { $max_chains != "" } {
+if { $chain_count != "" } {
+  lappend dft_args -chain_count $chain_count
+} elseif { $max_chains != "" } {
   lappend dft_args -max_chains $max_chains
 }
 set_dft_config {*}$dft_args
