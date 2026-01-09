@@ -369,6 +369,33 @@ proc dft_place_scan_ports_from_plan {} {
   }
 }
 
+proc dft_mark_scan_nets_dont_touch {} {
+  # Skip QoR-driven optimization on scan-only nets (scan_enable/scan ports and
+  # any SCAN-tagged nets created by stitching). These nets are disabled for
+  # functional STA via set_case_analysis, so buffering/sizing for them can add
+  # QoR overhead without improving functional timing.
+  set dont_touch_scan [dft_get_env_bool DFT_DONT_TOUCH_SCAN_NETS 1]
+  if { !$dont_touch_scan } {
+    puts "DFT: leaving scan nets optimizable (DFT_DONT_TOUCH_SCAN_NETS=0)"
+    return
+  }
+
+  set block [ord::get_db_block]
+  if { $block == "NULL" } {
+    puts "DFT: WARNING: no db block found; skipping scan dont_touch"
+    return
+  }
+
+  set marked 0
+  foreach net [$block getNets] {
+    if { [$net getSigType] == "SCAN" } {
+      $net setDoNotTouch true
+      incr marked
+    }
+  }
+  puts "DFT: marked $marked SCAN nets as dont_touch"
+}
+
 # Must match `flow/scripts/dft_scan_post_floorplan.tcl`.
 set clock_mixing [dft_get_env DFT_CLOCK_MIXING "clock_mix"]
 set max_length [dft_get_env DFT_MAX_CHAIN_LENGTH ""]
@@ -405,3 +432,5 @@ dft_place_scan_ports_from_plan
 set_case_analysis 0 [get_ports scan_enable_0]
 
 execute_dft_plan
+
+dft_mark_scan_nets_dont_touch

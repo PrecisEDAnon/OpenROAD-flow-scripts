@@ -115,6 +115,7 @@ Notes:
   - `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH` (max bits per chain; when `DFT_CHAIN_COUNT` is set this becomes a per-chain cap; otherwise it can enable multiple chains via chain-count inference)
   - `DFT_PLACE_SCAN_PORTS` (default `0`; re-place `scan_in_N`/`scan_out_N` near chain endpoints)
   - `DFT_PLACE_SCAN_ENABLE_PORT` (default `0`; also re-place `scan_enable_0`)
+  - `DFT_DONT_TOUCH_SCAN_NETS` (default `1`; marks SCAN nets `dont_touch` so `repair_design`/`repair_timing` won’t buffer/resize for scan-only nets)
 
 ## Reproduction: Baseline vs Fixed DFT (QoR Proxy Comparison)
 
