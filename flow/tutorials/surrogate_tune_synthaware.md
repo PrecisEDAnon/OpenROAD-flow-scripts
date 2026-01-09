@@ -1,5 +1,7 @@
 # Synthesis-aware surrogate tuning (clock sweep)
 
+Requires an OpenROAD build with surrogate support (`ENABLE_SURROGATE=ON`).
+
 The built-in `surrogate_tune` command evaluates a *single synthesized netlist* very quickly. When `clock_period` is part of the search space, this can break ranking because a real ORFS `finish` run re-synthesizes the netlist at the candidate clock.
 
 `make surrogate_tune_synthaware` fixes that by:

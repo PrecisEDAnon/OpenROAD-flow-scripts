@@ -2,6 +2,12 @@ utl::set_metrics_stage "surrogate__{}"
 
 source $::env(SCRIPTS_DIR)/load.tcl
 
+if { [llength [info commands surrogate_optimize]] == 0 } {
+  puts stderr "ERROR: surrogate_optimize is not available."
+  puts stderr "Build OpenROAD with ENABLE_SURROGATE=ON and run with OPENROAD_ENABLE_SURROGATE=1."
+  exit 1
+}
+
 erase_non_stage_variables floorplan
 load_design 1_synth.v 1_synth.sdc
 

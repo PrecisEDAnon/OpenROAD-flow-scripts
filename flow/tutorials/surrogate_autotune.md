@@ -1,5 +1,7 @@
 # Surrogate autotune (synthesis-aware + optional validation)
 
+Requires an OpenROAD build with surrogate support (`ENABLE_SURROGATE=ON`).
+
 `make surrogate_autotune` is a practical wrapper around the OpenROAD builtin surrogate that:
 
 1. Calibrates once from an ORFS reference point (`base` by default).
@@ -47,4 +49,3 @@ make -C flow surrogate_autotune DESIGN_CONFIG=designs/asap7/aes/config.mk \
 Per-clock surrogate runs are stored under:
 
 - `flow/results/<platform>/<design>/<variant>_clk*/surrogate_optimize.json`
-
