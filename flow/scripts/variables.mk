@@ -89,7 +89,12 @@ export TIME_CMD
 ifneq (${IN_NIX_SHELL},)
   export OPENROAD_EXE ?= $(shell command -v openroad)
 else
-  export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/install/OpenROAD/bin/openroad)
+  # Prefer an in-repo CMake build (useful when tools/install is not writable).
+  ifneq ($(wildcard $(FLOW_HOME)/../tools/OpenROAD/build/bin/openroad),)
+    export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/OpenROAD/build/bin/openroad)
+  else
+    export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/install/OpenROAD/bin/openroad)
+  endif
 endif
 ifneq (${IN_NIX_SHELL},)
   export OPENSTA_EXE ?= $(shell command -v sta)
