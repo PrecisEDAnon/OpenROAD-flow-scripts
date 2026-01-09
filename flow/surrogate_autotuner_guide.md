@@ -56,6 +56,59 @@ All surrogate targets:
 - run OpenROAD with `OPENROAD_ENABLE_SURROGATE=1`
 - use `SURROGATE_OPENROAD_EXE` (defaults to `OPENROAD_EXE`)
 
+### 4.1) Define the search space (`surrogate_space.json`)
+
+The surrogate autotuner is intentionally **more restricted** than the baseline
+ORFS autotuner: it only understands a small, fixed set of knob names and types.
+
+The search space format is a JSON **object** mapping knob-name → spec:
+
+```json
+{
+  "core_utilization": { "type": "int",   "minmax": [20, 99],   "step": 1 },
+  "core_aspect_ratio":{ "type": "float", "minmax": [0.8, 1.2], "step": 0 },
+  "enable_dpo":       { "type": "binary","minmax": [0, 1],     "step": 1 }
+}
+```
+
+Rules:
+
+- `type` must be one of: `float`, `int`, `binary`
+- `minmax: [min, max]` is required for all knobs (even `binary`)
+- `step` is optional:
+  - if `step > 0`, values are sampled on `min + k*step` (inclusive), then rounded for `int`
+  - if `step == 0` or omitted, values are sampled uniformly over `[min, max]` (then rounded for `int`)
+- `binary` always samples `0` or `1` (the `minmax/step` fields are required but effectively ignored)
+- Unknown knob names are ignored (OpenROAD logs a warning and continues)
+
+### 4.2) Supported knobs + valid values
+
+These are the only supported surrogate **design knobs** (space keys), and how
+they map onto ORFS variables for the optional validation runs:
+
+| Space key | ORFS variable | Type | Valid values |
+|---|---|---:|---|
+| `clock_period` | (via `SDC_FILE`) | float | `> 0` in the same units as your SDC; the wrappers treat it as **ps** (see note below) |
+| `core_utilization` | `CORE_UTILIZATION` | int | `0..100` (%); surrogate model effectively clamps to about `20..99` |
+| `core_aspect_ratio` | `CORE_ASPECT_RATIO` | float | `> 0`; surrogate model effectively clamps to about `0.2..5.0` |
+| `tns_end_percent` | `TNS_END_PERCENT` | int | `0..100` |
+| `global_padding` | `CELL_PAD_IN_SITES_GLOBAL_PLACEMENT` | int | `>= 0` (sites) |
+| `detail_padding` | `CELL_PAD_IN_SITES_DETAIL_PLACEMENT` | int | `>= 0` (sites) |
+| `enable_dpo` | `ENABLE_DPO` | binary | `0` or `1` |
+| `pin_layer_adjust` | `PIN_LAYER_ADJUST` | float | `0.0..1.0` (routing capacity adjustment factor) |
+| `above_layer_adjust` | `ABOVE_LAYER_ADJUST` | float | `0.0..1.0` (routing capacity adjustment factor) |
+| `density_margin_addon` | `PLACE_DENSITY_LB_ADDON` | float | `0.0..0.99` (ORFS errors out above `0.99`) |
+| `cts_cluster_size` | `CTS_CLUSTER_SIZE` | int | `>= 1` (sinks/cluster) |
+| `cts_cluster_diameter` | `CTS_CLUSTER_DIAMETER` | float | `> 0` (microns) |
+
+Notes:
+
+- `clock_period` is handled **synthesis-aware** when present in the space:
+  - the wrappers sweep clocks by rewriting `SDC_FILE` and re-synthesizing per clock
+  - surrogate tuning itself freezes `clock_period` (avoids “single-netlist clock mismatch”)
+- `density_margin_addon` maps to `PLACE_DENSITY_LB_ADDON`, which overrides `PLACE_DENSITY` in ORFS when set.
+- Routing adjust knobs use a simple split: first two routing layers get `PIN_LAYER_ADJUST`, and the rest get `ABOVE_LAYER_ADJUST` (fallback is the platform default when unset).
+
 ### A) Fast tuning on one synthesized netlist
 
 ```bash
@@ -107,4 +160,3 @@ Logs are written under `flow/logs/<platform>/<design>/<variant>/`.
 - If you see `surrogate_optimize is not available`, your OpenROAD binary is missing surrogate support:
   - rebuild OpenROAD with `-D ENABLE_SURROGATE=ON`
   - ensure the surrogate targets run with `OPENROAD_ENABLE_SURROGATE=1` (they do by default in this branch)
-
