@@ -88,7 +88,7 @@ they map onto ORFS variables for the optional validation runs:
 
 | Space key | ORFS variable | Type | Valid values |
 |---|---|---:|---|
-| `clock_period` | (via `SDC_FILE`) | float | `> 0` in the same units as your SDC; the wrappers treat it as **ps** (see note below) |
+| `clock_period` | (via `SDC_FILE`) | float | `> 0` in the same units as your SDC (the wrappers rewrite `SDC_FILE` by substituting this value into `clk_period` / `create_clock -period`) |
 | `core_utilization` | `CORE_UTILIZATION` | int | `0..100` (%); surrogate model effectively clamps to about `20..99` |
 | `core_aspect_ratio` | `CORE_ASPECT_RATIO` | float | `> 0`; surrogate model effectively clamps to about `0.2..5.0` |
 | `tns_end_percent` | `TNS_END_PERCENT` | int | `0..100` |
