@@ -155,6 +155,19 @@ make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config
 
 Logs are written under `flow/logs/<platform>/<design>/<variant>/`.
 
+## Expected gains (empirical)
+
+From on-disk runs with `SURROGATE_TIME_BUDGET_S=600` and `SURROGATE_VALIDATE_N=14`
+(K=14), across `{asap7,nangate45,sky130hd} × {aes,ibex,jpeg}`:
+
+- `routed_wirelength`: median gain `3.35%` (p25 `0.96%`, p75 `7.37%`), best observed `15.78%`, worst `0%`
+- `effective_clock_period`: median gain `2.99%` (p25 `1.61%`, p75 `4.71%`), best observed `11.58%`, worst `0%`
+
+Notes:
+
+- Gains are vs the design’s baseline (`flow/logs/<platform>/<design>/base/...`); baseline is always a candidate, so gains are non-negative by construction.
+- These runs only cover `routed_wirelength` and `effective_clock_period` at `600s`. Power/area at this budget are not yet characterized on disk.
+
 ## Troubleshooting
 
 - If you see `surrogate_optimize is not available`, your OpenROAD binary is missing surrogate support:
