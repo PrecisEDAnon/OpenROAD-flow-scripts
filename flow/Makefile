@@ -746,7 +746,7 @@ all: check-yosys check-openroad synth floorplan place cts route finish
 
 .PHONY: surrogate_tune
 surrogate_tune: check-openroad synth
-	($(TIME_CMD) $(OPENROAD_CMD) $(SCRIPTS_DIR)/surrogate_tune.tcl) 2>&1 | tee $(abspath $(LOG_DIR)/surrogate_tune.log)
+	(OPENROAD_ENABLE_SURROGATE=1 $(TIME_CMD) $(SURROGATE_OPENROAD_CMD) $(SCRIPTS_DIR)/surrogate_tune.tcl) 2>&1 | tee $(abspath $(LOG_DIR)/surrogate_tune.log)
 
 .PHONY: surrogate_tune_synthaware
 surrogate_tune_synthaware: check-openroad

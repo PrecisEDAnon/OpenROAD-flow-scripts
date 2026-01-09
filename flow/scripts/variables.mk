@@ -89,12 +89,7 @@ export TIME_CMD
 ifneq (${IN_NIX_SHELL},)
   export OPENROAD_EXE ?= $(shell command -v openroad)
 else
-  # Prefer an in-repo CMake build (useful when tools/install is not writable).
-  ifneq ($(wildcard $(FLOW_HOME)/../tools/OpenROAD/build/bin/openroad),)
-    export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/OpenROAD/build/bin/openroad)
-  else
-    export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/install/OpenROAD/bin/openroad)
-  endif
+  export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/install/OpenROAD/bin/openroad)
 endif
 ifneq (${IN_NIX_SHELL},)
   export OPENSTA_EXE ?= $(shell command -v sta)
@@ -108,6 +103,11 @@ export OPENROAD_ARGS = -no_init -threads $(NUM_CORES) $(OR_ARGS)
 export OPENROAD_CMD = $(OPENROAD_EXE) -exit $(OPENROAD_ARGS)
 export OPENROAD_NO_EXIT_CMD = $(OPENROAD_EXE) $(OPENROAD_ARGS)
 export OPENROAD_GUI_CMD = $(OPENROAD_EXE) -gui $(OR_ARGS)
+
+# Surrogate targets can use a different OpenROAD executable (e.g., one built
+# with ENABLE_SURROGATE=ON) without impacting the default flow.
+export SURROGATE_OPENROAD_EXE ?= $(OPENROAD_EXE)
+export SURROGATE_OPENROAD_CMD = $(SURROGATE_OPENROAD_EXE) -exit $(OPENROAD_ARGS)
 
 ifneq (${IN_NIX_SHELL},)
   YOSYS_EXE ?= $(shell command -v yosys)
