@@ -277,7 +277,25 @@ proc dft_place_pin_near_inst {pin_name inst_name} {
 proc dft_place_scan_ports_from_plan {} {
   # Place scan ports near their corresponding chain endpoints to reduce scan
   # I/O wirelength (especially when multiple chains are enabled).
-  set place_scan_ports [dft_get_env_bool DFT_PLACE_SCAN_PORTS 0]
+  set chain_count_env [dft_get_env DFT_CHAIN_COUNT ""]
+  set max_chains_env [dft_get_env DFT_MAX_CHAINS ""]
+  set max_length_env [dft_get_env DFT_MAX_CHAIN_LENGTH ""]
+  if { $max_length_env == "" } {
+    set max_length_env [dft_get_env DFT_MAX_LENGTH ""]
+  }
+
+  # Default to placing scan ports when the user explicitly configured multiple
+  # chains (or a max-length bound that is typically used to create them).
+  set default_place_scan_ports 0
+  if { $chain_count_env != "" && $chain_count_env > 1 } {
+    set default_place_scan_ports 1
+  } elseif { $max_chains_env != "" && $max_chains_env > 1 } {
+    set default_place_scan_ports 1
+  } elseif { $max_length_env != "" } {
+    set default_place_scan_ports 1
+  }
+
+  set place_scan_ports [dft_get_env_bool DFT_PLACE_SCAN_PORTS $default_place_scan_ports]
   if { !$place_scan_ports } {
     puts "DFT: skipping scan pin placement (DFT_PLACE_SCAN_PORTS=0)"
     return
@@ -351,7 +369,7 @@ proc dft_place_scan_ports_from_plan {} {
 
   # Optional: place scan_enable too (default off; it is a large-fanout net and
   # re-placing it can be risky if the IO area is dense).
-  set place_scan_enable [dft_get_env_bool DFT_PLACE_SCAN_ENABLE_PORT 0]
+  set place_scan_enable [dft_get_env_bool DFT_PLACE_SCAN_ENABLE_PORT $place_scan_ports]
   if { $place_scan_enable } {
     set block [ord::get_db_block]
     set die_rect [$block getDieArea]
