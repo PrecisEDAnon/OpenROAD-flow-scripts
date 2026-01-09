@@ -32,3 +32,8 @@ the DRC violation.
 ### Metal Fill Test Case
 View [metal_fill.tcl](./scripts/metal_fill/metal_fill.tcl) example Tcl scrit
 to add metal fill.
+
+## Surrogate Tuning
+
+- [surrogate_tune_synthaware.md](./surrogate_tune_synthaware.md): sweep clocks and tune knobs on a per-clock synthesized netlist.
+- [surrogate_autotune.md](./surrogate_autotune.md): synthesis-aware tuning with an optional full-ORFS validation stage.

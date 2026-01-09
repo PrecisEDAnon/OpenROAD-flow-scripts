@@ -744,6 +744,20 @@ check-yosys:
 .PHONY: all
 all: check-yosys check-openroad synth floorplan place cts route finish
 
+.PHONY: surrogate_tune
+surrogate_tune: check-openroad synth
+	($(TIME_CMD) $(OPENROAD_CMD) $(SCRIPTS_DIR)/surrogate_tune.tcl) 2>&1 | tee $(abspath $(LOG_DIR)/surrogate_tune.log)
+
+.PHONY: surrogate_tune_synthaware
+surrogate_tune_synthaware: check-openroad
+	@mkdir -p $(LOG_DIR)
+	($(TIME_CMD) $(PYTHON_EXE) $(SCRIPTS_DIR)/surrogate_tune_synthaware.py) 2>&1 | tee $(abspath $(LOG_DIR)/surrogate_tune_synthaware.log)
+
+.PHONY: surrogate_autotune
+surrogate_autotune: check-openroad
+	@mkdir -p $(LOG_DIR)
+	($(TIME_CMD) $(PYTHON_EXE) $(SCRIPTS_DIR)/surrogate_autotune.py) 2>&1 | tee $(abspath $(LOG_DIR)/surrogate_autotune.log)
+
 .PHONY: clean
 clean:
 	@echo

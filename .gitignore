@@ -13,6 +13,7 @@ flow/logs
 flow/reports
 flow/objects
 flow/tech
+flow/tmp_surrogate
 
 # Tar archives
 flow/*tar.gz
@@ -105,3 +106,10 @@ bazel-testlogs
 
 # python venv
 venv/
+flow/backup_*
+
+# Local scratch notes (kept out of git)
+doc.md
+
+# macOS
+.DS_Store
