@@ -135,6 +135,15 @@ configuration file.
 | <a name="DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME"></a>DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME| `-doomed_clips_w_runtime` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.| 1.0|
 | <a name="DETAILED_ROUTE_END_ITERATION"></a>DETAILED_ROUTE_END_ITERATION| Maximum number of iterations.| 64|
 | <a name="DETAILED_ROUTE_EXTRA_ARGS"></a>DETAILED_ROUTE_EXTRA_ARGS| Appends additional arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS`.| |
+| <a name="DETAILED_ROUTE_MULTI_START"></a>DETAILED_ROUTE_MULTI_START| Enable multi-start detailed routing (runs multiple short DRT attempts with different seeds and kills non-promising runs early).| 0|
+| <a name="DETAILED_ROUTE_MULTI_START_ACCEPT_BEST"></a>DETAILED_ROUTE_MULTI_START_ACCEPT_BEST| If no multi-start attempt meets DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS, accept the best completed attempt (lowest violation count) and finish without running the full-length fallback detailed_route.| 0|
+| <a name="DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE"></a>DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE| If multi-start fails to reach 0 violations, run a single detailed_route using the original settings.| 1|
+| <a name="DETAILED_ROUTE_MULTI_START_MAX_ITER"></a>DETAILED_ROUTE_MULTI_START_MAX_ITER| Per-attempt -droute_end_iter value when DETAILED_ROUTE_MULTI_START is enabled.| 10|
+| <a name="DETAILED_ROUTE_MULTI_START_MAX_RUNS"></a>DETAILED_ROUTE_MULTI_START_MAX_RUNS| Maximum number of DRT attempts when DETAILED_ROUTE_MULTI_START is enabled.| 8|
+| <a name="DETAILED_ROUTE_MULTI_START_OR_K"></a>DETAILED_ROUTE_MULTI_START_OR_K| OR_K value used for DRT multi-start attempts (controls initial net randomization when OR_SEED is set).| 0.1|
+| <a name="DETAILED_ROUTE_MULTI_START_OR_K_LIST"></a>DETAILED_ROUTE_MULTI_START_OR_K_LIST| Optional comma-separated list of OR_K values to cycle through across DRT multi-start attempts. When set, overrides DETAILED_ROUTE_MULTI_START_OR_K.| |
+| <a name="DETAILED_ROUTE_MULTI_START_SEED_BASE"></a>DETAILED_ROUTE_MULTI_START_SEED_BASE| Starting seed for DRT multi-start (OR_SEED for try 0; increments per attempt).| 0|
+| <a name="DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS"></a>DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS| Treat a multi-start attempt as successful if its final detailed-route "Number of violations" is less than or equal to this value. Default 0 requires 0 violations (DRC-clean routing).| 0|
 | <a name="DFF_LIB_FILES"></a>DFF_LIB_FILES| Technology mapping liberty files for flip-flops.| |
 | <a name="DFF_MAP_FILE"></a>DFF_MAP_FILE| Optional mapping file supplied to Yosys to map D flip-flops| |
 | <a name="DIE_AREA"></a>DIE_AREA| The die area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
@@ -476,6 +485,15 @@ configuration file.
 - [DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME](#DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME)
 - [DETAILED_ROUTE_END_ITERATION](#DETAILED_ROUTE_END_ITERATION)
 - [DETAILED_ROUTE_EXTRA_ARGS](#DETAILED_ROUTE_EXTRA_ARGS)
+- [DETAILED_ROUTE_MULTI_START](#DETAILED_ROUTE_MULTI_START)
+- [DETAILED_ROUTE_MULTI_START_ACCEPT_BEST](#DETAILED_ROUTE_MULTI_START_ACCEPT_BEST)
+- [DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE](#DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE)
+- [DETAILED_ROUTE_MULTI_START_MAX_ITER](#DETAILED_ROUTE_MULTI_START_MAX_ITER)
+- [DETAILED_ROUTE_MULTI_START_MAX_RUNS](#DETAILED_ROUTE_MULTI_START_MAX_RUNS)
+- [DETAILED_ROUTE_MULTI_START_OR_K](#DETAILED_ROUTE_MULTI_START_OR_K)
+- [DETAILED_ROUTE_MULTI_START_OR_K_LIST](#DETAILED_ROUTE_MULTI_START_OR_K_LIST)
+- [DETAILED_ROUTE_MULTI_START_SEED_BASE](#DETAILED_ROUTE_MULTI_START_SEED_BASE)
+- [DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS](#DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS)
 - [FILL_CELLS](#FILL_CELLS)
 - [MATCH_CELL_FOOTPRINT](#MATCH_CELL_FOOTPRINT)
 - [MAX_REPAIR_ANTENNAS_ITER_DRT](#MAX_REPAIR_ANTENNAS_ITER_DRT)
