@@ -12,6 +12,7 @@ For each run, collect:
 - **Per-iteration CPU vs elapsed time**: parsed from `[INFO DRT-0267] cpu time = ... elapsed time = ...` in `5_2_route.log`.
   - Compute **effective cores** per iteration as `cpu_seconds / elapsed_seconds` (higher is better; long-tail imbalance lowers this).
 - **Per-iteration DRVs**: from `5_2_route.json` keys `detailedroute__route__drc_errors__iter:<iter>`.
+- **Wirelength**: from `5_2_route.json` keys `detailedroute__route__wirelength` and `detailedroute__route__wirelength__iter:<iter>`.
 
 The “doomed clips” feature is considered successful when **elapsed time drops** and **effective cores rises**, with **no regression in DRVs**.
 
@@ -120,6 +121,11 @@ python3 benchmarks/doomed_clips/benchmark.py \
   --work-home flow/benchmarks/doomed_clips/<timestamp> \
   --openroad tools/OpenROAD-drt-doomed-clips/build/bin/openroad
 ```
+
+## Horror Story (sky130hd/jpeg)
+
+For a reproducible long-tail case and a “slay” recipe (multi-start, 3–10 iters),
+see `docs/user/DoomedClipsHorrorStory.md`.
 
 ## Example Results (standard suite)
 
