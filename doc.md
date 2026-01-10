@@ -11,17 +11,20 @@ Docs:
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
-  - `OpenROAD-clean-DFT` (baseline)
-  - `OpenROAD-toggle-rebased-DFT` (active)
+  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) (baseline)
+  - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) (active)
 - OpenROAD-flow-scripts:
-  - `ORFS-clean-DFT` (baseline)
-  - `ORFS-toggle-rebased-DFT` (active)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (baseline)
+  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (active)
+
+Note:
+- `ORFS-clean-DFT` is meant as a baseline snapshot; the knob list below reflects the active `ORFS-toggle-rebased-DFT` branch.
 
 How to run (ORFS):
 - `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl` (runs `scan_replace`, creates scan ports)
 - `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl` (optional scan port placement + runs `execute_dft_plan`)
 
-Key knobs:
+Key knobs (ORFS-toggle-rebased-DFT):
 - `DFT_CHAIN_COUNT`: fixed number of scan chains (exact)
 - `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH`: max bits per chain (also used to infer chain count when `DFT_CHAIN_COUNT` is not set)
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
