@@ -8,6 +8,9 @@ Canonical end-to-end guides (these are what we expect users to follow):
 This `doc.md` is a “current status” handoff that ties together the 4 branches,
 their pairing rules, gating, and known limitations/results.
 
+Note: upstream `.gitignore` ignores `doc.md`, but in these surrogate branches the
+file is intentionally tracked (gitignore does not apply to tracked files).
+
 ## Current branch set (precisedanon)
 
 The deliverable is **four branches total** (two repos × normal/rebased):
@@ -38,6 +41,35 @@ Pairing rules:
 
 - `orfs-surrogate-normal` ↔ `openroad-surrogate-normal`
 - `orfs-surrogate-rebased` ↔ `openroad-surrogate-rebased`
+
+## Quick run (normal vs rebased)
+
+Normal:
+
+```bash
+git checkout orfs-surrogate-normal
+git submodule update --init --recursive
+./build_openroad.sh --local
+
+# Baseline logs (recommended for calibration)
+make -C flow finish DESIGN_CONFIG=designs/<platform>/<design>/config.mk
+
+# Surrogate autotune (example)
+make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config.mk \
+  SURROGATE_VALIDATE=1 SURROGATE_VALIDATE_N=14
+```
+
+Rebased:
+
+```bash
+git checkout orfs-surrogate-rebased
+git submodule update --init --recursive
+./build_openroad.sh --local --openroad-args "-D ENABLE_SURROGATE=ON"
+
+# Surrogate targets on this branch run OpenROAD with OPENROAD_ENABLE_SURROGATE=1
+make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config.mk \
+  SURROGATE_VALIDATE=1 SURROGATE_VALIDATE_N=14
+```
 
 ## What is shipped (ORFS surface area)
 
