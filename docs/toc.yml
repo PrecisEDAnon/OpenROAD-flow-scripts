@@ -19,6 +19,8 @@ entries:
     title: Flow Variables
   - file: user/DoomedClipsBenchmark.md
     title: Doomed DRT Clips Benchmark
+  - file: user/DoomedClipsHorrorStory.md
+    title: Doomed DRT Clips Horror Story
   - file: contrib/Metrics.md
     title: Metrics
   - file: user/InstructionsForAutoTuner.md

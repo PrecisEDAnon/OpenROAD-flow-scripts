@@ -16,6 +16,7 @@ STANDARD_PLATFORMS = ("nangate45", "asap7", "sky130hd")
 STANDARD_DESIGNS = ("aes", "ibex", "jpeg")
 
 STRESS_SUITE = "stress"
+HORROR_SUITE = "horror"
 
 # Chosen to increase routing difficulty without making the suite too brittle.
 STRESS_CORE_UTILIZATION = {
@@ -30,6 +31,12 @@ STRESS_PER_CASE_OVERRIDES: dict[tuple[str, str], list[str]] = {
     # utilization overrides actually take effect for stress runs.
     ("nangate45", "aes"): ["FLOORPLAN_DEF="],
 }
+
+HORROR_DESIGN_CONFIG = "./designs/sky130hd/jpeg/config_horror.mk"
+HORROR_PLACE_DENSITY_LB_ADDON = "0.25"
+HORROR_GLOBAL_ROUTE_ARGS = (
+    "-congestion_iterations 30 -congestion_report_iter_step 5 -verbose -allow_congestion"
+)
 
 
 @dataclass(frozen=True)
@@ -52,7 +59,9 @@ class RunResult:
   variant: str
   drt_seconds: int | None
   final_drvs: int | None
+  final_wirelength: int | None
   iter_drvs: dict[int, int]
+  iter_wirelength: dict[int, int]
   iter_times: dict[int, IterTime]
 
   @property
@@ -169,18 +178,29 @@ def parse_iter_times(log_text: str) -> dict[int, IterTime]:
   return result
 
 
-def parse_route_metrics(metrics_path: Path) -> tuple[int | None, dict[int, int]]:
+def parse_route_metrics(metrics_path: Path) -> tuple[int | None, dict[int, int], int | None, dict[int, int]]:
   if not metrics_path.exists():
-    return None, {}
+    return None, {}, None, {}
   data = json.loads(metrics_path.read_text())
   final_drvs = data.get("detailedroute__route__drc_errors")
+  final_wirelength = data.get("detailedroute__route__wirelength")
   iter_drvs: dict[int, int] = {}
+  iter_wirelength: dict[int, int] = {}
   for key, value in data.items():
     m = re.match(r"detailedroute__route__drc_errors__iter:(\d+)$", key)
-    if not m:
+    if m:
+      iter_drvs[int(m.group(1))] = int(value)
       continue
-    iter_drvs[int(m.group(1))] = int(value)
-  return (int(final_drvs) if final_drvs is not None else None), iter_drvs
+    m = re.match(r"detailedroute__route__wirelength__iter:(\d+)$", key)
+    if m:
+      iter_wirelength[int(m.group(1))] = int(value)
+      continue
+  return (
+      int(final_drvs) if final_drvs is not None else None,
+      iter_drvs,
+      int(final_wirelength) if final_wirelength is not None else None,
+      iter_wirelength,
+  )
 
 
 def parse_run(work_home: Path, platform: str, design: str, variant: str) -> RunResult:
@@ -189,14 +209,16 @@ def parse_run(work_home: Path, platform: str, design: str, variant: str) -> RunR
   log_text = log_path.read_text() if log_path.exists() else ""
   drt_seconds = parse_drt_seconds(log_text)
   iter_times = parse_iter_times(log_text)
-  final_drvs, iter_drvs = parse_route_metrics(metrics_path)
+  final_drvs, iter_drvs, final_wirelength, iter_wirelength = parse_route_metrics(metrics_path)
   return RunResult(
       platform=platform,
       design=design,
       variant=variant,
       drt_seconds=drt_seconds,
       final_drvs=final_drvs,
+      final_wirelength=final_wirelength,
       iter_drvs=iter_drvs,
+      iter_wirelength=iter_wirelength,
       iter_times=iter_times,
   )
 
@@ -275,6 +297,8 @@ def run_drt(
     env: dict[str, str],
     extra_args: str | None,
     make_overrides: list[str],
+    extra_make_overrides: list[str] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> None:
   platform = Path(design_config).parts[-3]
   design = Path(design_config).parts[-2]
@@ -286,10 +310,17 @@ def run_drt(
       dst_variant=variant,
   )
   env = dict(env)
+  if extra_env:
+    env.update(extra_env)
   if extra_args:
     env["DETAILED_ROUTE_EXTRA_ARGS"] = extra_args
   else:
     env.pop("DETAILED_ROUTE_EXTRA_ARGS", None)
+
+  combined_overrides = list(make_overrides)
+  if extra_make_overrides:
+    combined_overrides.extend(extra_make_overrides)
+  combined_overrides = _normalize_make_overrides(combined_overrides)
 
   _make(
       flow_dir,
@@ -299,7 +330,7 @@ def run_drt(
           f"WORK_HOME={work_home}",
           f"NUM_CORES={threads}",
           f"OPENROAD_EXE={openroad_exe}",
-          *make_overrides,
+          *combined_overrides,
           "do-5_2_route",
       ],
       env=env,
@@ -325,6 +356,8 @@ def write_summary(
       "speedup": f"{speedup:.3f}" if speedup is not None else "",
       "control_final_drvs": control.final_drvs,
       "doomed_final_drvs": doomed.final_drvs,
+      "control_final_wirelength": control.final_wirelength,
+      "doomed_final_wirelength": doomed.final_wirelength,
       "control_avg_eff_cores": f"{control.avg_effective_cores:.2f}"
       if control.avg_effective_cores is not None
       else "",
@@ -379,9 +412,15 @@ def main() -> int:
   )
   ap.add_argument(
       "--suite",
-      choices=("standard", STRESS_SUITE),
+      choices=("standard", STRESS_SUITE, HORROR_SUITE),
       default="standard",
       help="Benchmark suite selection.",
+  )
+  ap.add_argument(
+      "--mode",
+      choices=("both", "control", "doomed"),
+      default="both",
+      help="Which variants to run (default: both).",
   )
   ap.add_argument(
       "--platform",
@@ -452,6 +491,24 @@ def main() -> int:
       default=None,
       help="Directory for summary artifacts (default: <work_home>/doomed_clips_benchmark).",
   )
+  ap.add_argument(
+      "--horror-control-end-iter",
+      type=int,
+      default=40,
+      help=f"For --suite {HORROR_SUITE}: DETAILED_ROUTE_END_ITERATION for the control run.",
+  )
+  ap.add_argument(
+      "--horror-slay-max-iter",
+      type=int,
+      default=3,
+      help=f"For --suite {HORROR_SUITE}: DETAILED_ROUTE_MULTI_START_MAX_ITER for the doomed run.",
+  )
+  ap.add_argument(
+      "--horror-slay-max-runs",
+      type=int,
+      default=1,
+      help=f"For --suite {HORROR_SUITE}: DETAILED_ROUTE_MULTI_START_MAX_RUNS for the doomed run.",
+  )
   args = ap.parse_args()
 
   flow_dir: Path = args.flow_dir
@@ -479,11 +536,14 @@ def main() -> int:
       design = parts[-2]
       suite.append((platform, design, design_config))
   else:
-    platforms = args.platform or list(STANDARD_PLATFORMS)
-    designs = args.design or list(STANDARD_DESIGNS)
-    for platform in platforms:
-      for design in designs:
-        suite.append((platform, design, f"./designs/{platform}/{design}/config.mk"))
+    if args.suite == HORROR_SUITE:
+      suite.append(("sky130hd", "jpeg", HORROR_DESIGN_CONFIG))
+    else:
+      platforms = args.platform or list(STANDARD_PLATFORMS)
+      designs = args.design or list(STANDARD_DESIGNS)
+      for platform in platforms:
+        for design in designs:
+          suite.append((platform, design, f"./designs/{platform}/{design}/config.mk"))
   env = dict(os.environ)
   env["OR_SEED"] = str(args.or_seed)
   env["OR_K"] = str(args.or_k)
@@ -520,6 +580,15 @@ def main() -> int:
       )
       make_overrides.extend(STRESS_PER_CASE_OVERRIDES.get((platform, design), []))
 
+    if args.suite == HORROR_SUITE:
+      make_overrides.extend(
+          [
+              f"PLACE_DENSITY_LB_ADDON={HORROR_PLACE_DENSITY_LB_ADDON}",
+              f"GLOBAL_ROUTE_ARGS={HORROR_GLOBAL_ROUTE_ARGS}",
+              "SKIP_ANTENNA_REPAIR_POST_DRT=1",
+          ]
+      )
+
     make_overrides.extend(user_overrides)
     try:
       make_overrides = _normalize_make_overrides(make_overrides)
@@ -543,28 +612,46 @@ def main() -> int:
           env=env,
           make_overrides=make_overrides,
       )
-      run_drt(
-          flow_dir=flow_dir,
-          work_home=work_home,
-          design_config=design_config,
-          variant=control_variant,
-          openroad_exe=openroad_control,
-          threads=args.threads,
-          env=env,
-          extra_args=None,
-          make_overrides=make_overrides,
-      )
-      run_drt(
-          flow_dir=flow_dir,
-          work_home=work_home,
-          design_config=design_config,
-          variant=doomed_variant,
-          openroad_exe=openroad_doomed,
-          threads=args.threads,
-          env=env,
-          extra_args=args.doomed_args,
-          make_overrides=make_overrides,
-      )
+      if args.mode in ("both", "control"):
+        run_drt(
+            flow_dir=flow_dir,
+            work_home=work_home,
+            design_config=design_config,
+            variant=control_variant,
+            openroad_exe=openroad_control,
+            threads=args.threads,
+            env=env,
+            extra_args=None,
+            make_overrides=make_overrides,
+            extra_make_overrides=[
+                f"DETAILED_ROUTE_END_ITERATION={args.horror_control_end_iter}"
+            ]
+            if args.suite == HORROR_SUITE
+            else None,
+        )
+      if args.mode in ("both", "doomed"):
+        doomed_env: dict[str, str] | None = None
+        if args.suite == HORROR_SUITE:
+          doomed_env = {
+              "DETAILED_ROUTE_MULTI_START": "1",
+              "DETAILED_ROUTE_MULTI_START_MAX_ITER": str(args.horror_slay_max_iter),
+              "DETAILED_ROUTE_MULTI_START_MAX_RUNS": str(args.horror_slay_max_runs),
+              "DETAILED_ROUTE_MULTI_START_ACCEPT_BEST": "1",
+              "DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE": "0",
+              "DETAILED_ROUTE_MULTI_START_OR_K": "0.0",
+          }
+        run_drt(
+            flow_dir=flow_dir,
+            work_home=work_home,
+            design_config=design_config,
+            variant=doomed_variant,
+            openroad_exe=openroad_doomed,
+            threads=args.threads,
+            env=env,
+            extra_args=args.doomed_args,
+            make_overrides=make_overrides,
+            extra_env=doomed_env,
+        )
 
     control = parse_run(work_home, platform, design, control_variant)
     doomed = parse_run(work_home, platform, design, doomed_variant)
@@ -588,12 +675,20 @@ def main() -> int:
             "speedup": speedup,
             "control_final_drvs": "" if control.final_drvs is None else str(control.final_drvs),
             "doomed_final_drvs": "" if doomed.final_drvs is None else str(doomed.final_drvs),
+            "control_final_wirelength": ""
+            if control.final_wirelength is None
+            else str(control.final_wirelength),
+            "doomed_final_wirelength": ""
+            if doomed.final_wirelength is None
+            else str(doomed.final_wirelength),
             "control_avg_eff_cores": f"{control.avg_effective_cores:.2f}"
             if control.avg_effective_cores is not None
             else "",
             "doomed_avg_eff_cores": f"{doomed.avg_effective_cores:.2f}"
             if doomed.avg_effective_cores is not None
             else "",
+            "control_iter_count": str(len(control.iter_times)),
+            "doomed_iter_count": str(len(doomed.iter_times)),
         }
     )
   keys = list(rows[0].keys()) if rows else []

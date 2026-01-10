@@ -2,7 +2,10 @@
 
 This repo contains a prototype “doomed clip” handling mode for OpenROAD’s detailed router (`drt` / TritonRoute) plus OpenROAD-flow-scripts (ORFS) hooks and a benchmark harness.
 
-Goal: reduce **long-tail detailed-route runtime** caused by a small number of stubborn tiles by (1) prioritizing expensive tiles earlier and (2) optionally exploring multiple cost settings on the worst tiles.
+Goal: reduce **long-tail detailed-route runtime** caused by a small number of stubborn tiles by:
+
+1. **Inside OpenROAD DRT**: prioritize expensive tiles earlier (“doomed clips”).
+2. **At the ORFS level**: optionally run **multi-start DRT** (multiple short attempts with early-kill) to bound wall time.
 
 ## Branch Pairing (this handoff)
 
@@ -18,8 +21,9 @@ This handoff is delivered as two ORFS + OpenROAD branch pairs:
   - Feature work is implemented in a separate OpenROAD worktree (see below).
 - ORFS changes (this repo):
   - `flow/scripts/detail_route.tcl`: adds `DETAILED_ROUTE_EXTRA_ARGS` (append-only) hook plus `DETAILED_ROUTE_DOOMED_CLIPS*` toggles.
+  - `flow/scripts/flow.sh`, `flow/scripts/multi_start_drt.py`: optional multi-start wrapper for `5_2_route` when `DETAILED_ROUTE_MULTI_START=1`.
   - `flow/scripts/global_route.tcl`: propagates `-allow_congestion` into incremental `global_route` calls (needed for “stress” experiments).
-  - `docs/user/FlowVariables.md`, `docs/toc.yml`: documents the new flow variable.
+  - `docs/user/FlowVariables.md`, `docs/toc.yml`: documents `DETAILED_ROUTE_EXTRA_ARGS`, `DETAILED_ROUTE_DOOMED_CLIPS*`, and `DETAILED_ROUTE_MULTI_START*`.
 - Benchmark harness (this repo):
   - `benchmarks/doomed_clips/benchmark.py`: runs control vs doomed from a shared GRT checkpoint and summarizes results.
   - `docs/user/DoomedClipsBenchmark.md`: benchmark usage notes.
@@ -49,6 +53,27 @@ High-level algorithm:
 1. During iteration *k*, each tile/clip records runtime, DRVs (init/best), and congestion.
 2. At iteration *k+1*, tiles are scored (normalized by max runtime/max DRVs) and **sorted so worst tiles run first** within each batch.
 3. Optional: for the worst tiles, multiple worker cost variants run; the best result is selected.
+
+## ORFS Feature: Multi-Start DRT (+ Early Kill)
+
+This is **outside OpenROAD** (a flow wrapper). It runs multiple short
+`detailed_route` attempts from the same `5_1_grt` checkpoint, varying seeds (and
+optionally `OR_K`) and killing attempts that are clearly not converging within
+the iteration budget.
+
+Enable it with:
+
+- `DETAILED_ROUTE_MULTI_START=1`
+
+Core knobs:
+
+- `DETAILED_ROUTE_MULTI_START_MAX_ITER` (default 10)
+- `DETAILED_ROUTE_MULTI_START_MAX_RUNS` (default 8)
+- `DETAILED_ROUTE_MULTI_START_ACCEPT_BEST` (default 0)
+- `DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE` (default 1)
+
+When multi-start is enabled, per-attempt artifacts are written under
+`_multistart/tryXX/` in `results/`, `logs/`, `reports/`, `objects/`.
 
 ## How To Set Up Baseline vs Feature OpenROAD (recommended)
 
@@ -211,4 +236,11 @@ Example:
 ## Quick “Done / Not Done” Status
 
 - Implemented: OpenROAD `-doomed_clips` feature + ORFS hook to pass args + benchmark harness.
-- Not finished: a stress configuration that shows a **large** and **reliable** speedup (e.g. >5–10%) across multiple runs; further tuning/measurement improvements are expected.
+- Implemented: ORFS multi-start wrapper (`DETAILED_ROUTE_MULTI_START=1`) to bound wall time via short attempts + early-kill.
+
+## Horror Story (sky130hd/jpeg)
+
+For a reproducible long-tail `sky130hd/jpeg` case (multi-hour baseline) plus a
+clean “slay” recipe that caps DRT to ~3–10 iterations, see:
+
+- `docs/user/DoomedClipsHorrorStory.md`
