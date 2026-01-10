@@ -126,8 +126,17 @@ configuration file.
 | <a name="DESIGN_NICKNAME"></a>DESIGN_NICKNAME| DESIGN_NICKNAME just changes the directory name that ORFS outputs to be DESIGN_NICKNAME instead of DESIGN_NAME in case DESIGN_NAME is unwieldy or conflicts with a different design.| |
 | <a name="DETAILED_METRICS"></a>DETAILED_METRICS| If set, then calls report_metrics prior to repair operations in the CTS and global route stages| 0|
 | <a name="DETAILED_ROUTE_ARGS"></a>DETAILED_ROUTE_ARGS| Add additional arguments for debugging purposes during detail route.| |
-| <a name="DETAILED_ROUTE_EXTRA_ARGS"></a>DETAILED_ROUTE_EXTRA_ARGS| Appends additional arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS`.| |
 | <a name="DETAILED_ROUTE_END_ITERATION"></a>DETAILED_ROUTE_END_ITERATION| Maximum number of iterations.| 64|
+| <a name="DETAILED_ROUTE_EXTRA_ARGS"></a>DETAILED_ROUTE_EXTRA_ARGS| Appends additional arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS`.| |
+| <a name="DETAILED_ROUTE_MULTI_START"></a>DETAILED_ROUTE_MULTI_START| Enable multi-start detailed routing (runs multiple short DRT attempts with different seeds and kills non-promising runs early).| 0|
+| <a name="DETAILED_ROUTE_MULTI_START_ACCEPT_BEST"></a>DETAILED_ROUTE_MULTI_START_ACCEPT_BEST| If no multi-start attempt meets DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS, accept the best completed attempt (lowest violation count) and finish without running the full-length fallback detailed_route.| 0|
+| <a name="DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE"></a>DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE| If multi-start fails to reach 0 violations, run a single detailed_route using the original settings.| 1|
+| <a name="DETAILED_ROUTE_MULTI_START_MAX_ITER"></a>DETAILED_ROUTE_MULTI_START_MAX_ITER| Per-attempt -droute_end_iter value when DETAILED_ROUTE_MULTI_START is enabled.| 10|
+| <a name="DETAILED_ROUTE_MULTI_START_MAX_RUNS"></a>DETAILED_ROUTE_MULTI_START_MAX_RUNS| Maximum number of DRT attempts when DETAILED_ROUTE_MULTI_START is enabled.| 8|
+| <a name="DETAILED_ROUTE_MULTI_START_OR_K"></a>DETAILED_ROUTE_MULTI_START_OR_K| OR_K value used for DRT multi-start attempts (controls initial net randomization when OR_SEED is set).| 0.1|
+| <a name="DETAILED_ROUTE_MULTI_START_OR_K_LIST"></a>DETAILED_ROUTE_MULTI_START_OR_K_LIST| Optional comma-separated list of OR_K values to cycle through across DRT multi-start attempts. When set, overrides DETAILED_ROUTE_MULTI_START_OR_K.| |
+| <a name="DETAILED_ROUTE_MULTI_START_SEED_BASE"></a>DETAILED_ROUTE_MULTI_START_SEED_BASE| Starting seed for DRT multi-start (OR_SEED for try 0; increments per attempt).| 0|
+| <a name="DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS"></a>DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS| Treat a multi-start attempt as successful if its final detailed-route "Number of violations" is less than or equal to this value. Default 0 requires 0 violations (DRC-clean routing).| 0|
 | <a name="DFF_LIB_FILES"></a>DFF_LIB_FILES| Technology mapping liberty files for flip-flops.| |
 | <a name="DIE_AREA"></a>DIE_AREA| The die area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
 | <a name="DONT_BUFFER_PORTS"></a>DONT_BUFFER_PORTS| Do not buffer input/output ports during floorplanning.| 0|
@@ -452,8 +461,17 @@ configuration file.
 ## route variables
 
 - [DETAILED_ROUTE_ARGS](#DETAILED_ROUTE_ARGS)
-- [DETAILED_ROUTE_EXTRA_ARGS](#DETAILED_ROUTE_EXTRA_ARGS)
 - [DETAILED_ROUTE_END_ITERATION](#DETAILED_ROUTE_END_ITERATION)
+- [DETAILED_ROUTE_EXTRA_ARGS](#DETAILED_ROUTE_EXTRA_ARGS)
+- [DETAILED_ROUTE_MULTI_START](#DETAILED_ROUTE_MULTI_START)
+- [DETAILED_ROUTE_MULTI_START_ACCEPT_BEST](#DETAILED_ROUTE_MULTI_START_ACCEPT_BEST)
+- [DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE](#DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE)
+- [DETAILED_ROUTE_MULTI_START_MAX_ITER](#DETAILED_ROUTE_MULTI_START_MAX_ITER)
+- [DETAILED_ROUTE_MULTI_START_MAX_RUNS](#DETAILED_ROUTE_MULTI_START_MAX_RUNS)
+- [DETAILED_ROUTE_MULTI_START_OR_K](#DETAILED_ROUTE_MULTI_START_OR_K)
+- [DETAILED_ROUTE_MULTI_START_OR_K_LIST](#DETAILED_ROUTE_MULTI_START_OR_K_LIST)
+- [DETAILED_ROUTE_MULTI_START_SEED_BASE](#DETAILED_ROUTE_MULTI_START_SEED_BASE)
+- [DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS](#DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS)
 - [FILL_CELLS](#FILL_CELLS)
 - [MATCH_CELL_FOOTPRINT](#MATCH_CELL_FOOTPRINT)
 - [MAX_REPAIR_ANTENNAS_ITER_DRT](#MAX_REPAIR_ANTENNAS_ITER_DRT)
@@ -535,3 +553,4 @@ configuration file.
 - [TAP_CELL_NAME](#TAP_CELL_NAME)
 - [TECH_LEF](#TECH_LEF)
 - [USE_FILL](#USE_FILL)
+

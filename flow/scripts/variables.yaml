@@ -743,6 +743,75 @@ DETAILED_ROUTE_END_ITERATION:
   default: 64
   stages:
     - route
+DETAILED_ROUTE_MULTI_START:
+  description: >
+    Enable multi-start detailed routing (runs multiple short DRT attempts with
+    different seeds and kills non-promising runs early).
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_FALLBACK_TO_SINGLE:
+  description: >
+    If multi-start fails to reach 0 violations, run a single detailed_route
+    using the original settings.
+  default: 1
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS:
+  description: >
+    Treat a multi-start attempt as successful if its final detailed-route
+    "Number of violations" is less than or equal to this value. Default 0
+    requires 0 violations (DRC-clean routing).
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_ACCEPT_BEST:
+  description: >
+    If no multi-start attempt meets DETAILED_ROUTE_MULTI_START_SUCCESS_MAX_VIOLATIONS,
+    accept the best completed attempt (lowest violation count) and finish without
+    running the full-length fallback detailed_route.
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_MAX_ITER:
+  description: >
+    Per-attempt -droute_end_iter value when DETAILED_ROUTE_MULTI_START is enabled.
+  default: 10
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_MAX_RUNS:
+  description: >
+    Maximum number of DRT attempts when DETAILED_ROUTE_MULTI_START is enabled.
+  default: 8
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_OR_K:
+  description: >
+    OR_K value used for DRT multi-start attempts (controls initial net
+    randomization when OR_SEED is set).
+  default: 0.10
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_OR_K_LIST:
+  description: >
+    Optional comma-separated list of OR_K values to cycle through across DRT
+    multi-start attempts. When set, overrides DETAILED_ROUTE_MULTI_START_OR_K.
+  default: ""
+  stages:
+    - route
+DETAILED_ROUTE_MULTI_START_SEED_BASE:
+  description: >
+    Starting seed for DRT multi-start (OR_SEED for try 0; increments per attempt).
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_EXTRA_ARGS:
+  description: >
+    Appends additional arguments to `detailed_route` without overriding
+    `DETAILED_ROUTE_ARGS`.
+  default: ""
+  stages:
+    - route
 RCX_RULES:
   description: |
     RC Extraction rules file path.
