@@ -126,8 +126,15 @@ configuration file.
 | <a name="DESIGN_NICKNAME"></a>DESIGN_NICKNAME| DESIGN_NICKNAME just changes the directory name that ORFS outputs to be DESIGN_NICKNAME instead of DESIGN_NAME in case DESIGN_NAME is unwieldy or conflicts with a different design.| |
 | <a name="DETAILED_METRICS"></a>DETAILED_METRICS| If set, then calls report_metrics prior to repair operations in the CTS and global route stages| 0|
 | <a name="DETAILED_ROUTE_ARGS"></a>DETAILED_ROUTE_ARGS| Add additional arguments for debugging purposes during detail route.| |
-| <a name="DETAILED_ROUTE_EXTRA_ARGS"></a>DETAILED_ROUTE_EXTRA_ARGS| Appends additional arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS`.| |
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS"></a>DETAILED_ROUTE_DOOMED_CLIPS| Enable OpenROAD DRT doomed-clip scheduling (`detailed_route -doomed_clips`).| 0|
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER"></a>DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER| `-doomed_clips_min_iter` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.| 1|
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N"></a>DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N| `-doomed_clips_report_n` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled (0 disables printing).| 0|
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS_TOP_N"></a>DETAILED_ROUTE_DOOMED_CLIPS_TOP_N| `-doomed_clips_top_n` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.| 0|
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION"></a>DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION| `-doomed_clips_w_congestion` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.| 0.25|
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS"></a>DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS| `-doomed_clips_w_drvs` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.| 1.0|
+| <a name="DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME"></a>DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME| `-doomed_clips_w_runtime` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.| 1.0|
 | <a name="DETAILED_ROUTE_END_ITERATION"></a>DETAILED_ROUTE_END_ITERATION| Maximum number of iterations.| 64|
+| <a name="DETAILED_ROUTE_EXTRA_ARGS"></a>DETAILED_ROUTE_EXTRA_ARGS| Appends additional arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS`.| |
 | <a name="DFF_LIB_FILES"></a>DFF_LIB_FILES| Technology mapping liberty files for flip-flops.| |
 | <a name="DFF_MAP_FILE"></a>DFF_MAP_FILE| Optional mapping file supplied to Yosys to map D flip-flops| |
 | <a name="DIE_AREA"></a>DIE_AREA| The die area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
@@ -460,8 +467,15 @@ configuration file.
 ## route variables
 
 - [DETAILED_ROUTE_ARGS](#DETAILED_ROUTE_ARGS)
-- [DETAILED_ROUTE_EXTRA_ARGS](#DETAILED_ROUTE_EXTRA_ARGS)
+- [DETAILED_ROUTE_DOOMED_CLIPS](#DETAILED_ROUTE_DOOMED_CLIPS)
+- [DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER](#DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER)
+- [DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N](#DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N)
+- [DETAILED_ROUTE_DOOMED_CLIPS_TOP_N](#DETAILED_ROUTE_DOOMED_CLIPS_TOP_N)
+- [DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION](#DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION)
+- [DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS](#DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS)
+- [DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME](#DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME)
 - [DETAILED_ROUTE_END_ITERATION](#DETAILED_ROUTE_END_ITERATION)
+- [DETAILED_ROUTE_EXTRA_ARGS](#DETAILED_ROUTE_EXTRA_ARGS)
 - [FILL_CELLS](#FILL_CELLS)
 - [MATCH_CELL_FOOTPRINT](#MATCH_CELL_FOOTPRINT)
 - [MAX_REPAIR_ANTENNAS_ITER_DRT](#MAX_REPAIR_ANTENNAS_ITER_DRT)
@@ -547,3 +561,4 @@ configuration file.
 - [TAP_CELL_NAME](#TAP_CELL_NAME)
 - [TECH_LEF](#TECH_LEF)
 - [USE_FILL](#USE_FILL)
+

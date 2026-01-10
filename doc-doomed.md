@@ -4,13 +4,20 @@ This repo contains a prototype “doomed clip” handling mode for OpenROAD’s 
 
 Goal: reduce **long-tail detailed-route runtime** caused by a small number of stubborn tiles by (1) prioritizing expensive tiles earlier and (2) optionally exploring multiple cost settings on the worst tiles.
 
+## Branch Pairing (this handoff)
+
+This handoff is delivered as two ORFS + OpenROAD branch pairs:
+
+- Pair-1: OpenROAD `codex/doomed-clips-p1` (based on `7bc521`) + ORFS `codex/doomed-clips-p1` (based on `93c42b`) — minimal prototype.
+- Pair-2: OpenROAD `codex/doomed-clips-p2` (rebased to `upstream/master`) + ORFS `codex/doomed-clips-p2` (based on `origin/master`) — adds ORFS toggles + cleanup.
+
 ## Repo Layout (what’s where)
 
 - OpenROAD submodule: `tools/OpenROAD/`
   - Baseline reference OpenROAD commit: `7bc521f36a` (called “7bc521” below).
   - Feature work is implemented in a separate OpenROAD worktree (see below).
 - ORFS changes (this repo):
-  - `flow/scripts/detail_route.tcl`: adds `DETAILED_ROUTE_EXTRA_ARGS` (append-only) hook.
+  - `flow/scripts/detail_route.tcl`: adds `DETAILED_ROUTE_EXTRA_ARGS` (append-only) hook plus `DETAILED_ROUTE_DOOMED_CLIPS*` toggles.
   - `flow/scripts/global_route.tcl`: propagates `-allow_congestion` into incremental `global_route` calls (needed for “stress” experiments).
   - `docs/user/FlowVariables.md`, `docs/toc.yml`: documents the new flow variable.
 - Benchmark harness (this repo):
@@ -88,12 +95,14 @@ make -C flow do-5_2_route \
   WORK_HOME=flow/work_doombench \
   NUM_CORES=32 \
   OPENROAD_EXE=../tools/OpenROAD-drt-doomed-clips/build/bin/openroad \
-  DETAILED_ROUTE_EXTRA_ARGS="-doomed_clips -doomed_clips_report_n 5"
+  DETAILED_ROUTE_DOOMED_CLIPS=1 \
+  DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N=5
 ```
 
 Notes:
 
-- `DETAILED_ROUTE_EXTRA_ARGS` appends to the existing `detailed_route` args; it does not replace `DETAILED_ROUTE_ARGS`.
+- `DETAILED_ROUTE_DOOMED_CLIPS*` toggles append to the existing `detailed_route` args; they do not replace `DETAILED_ROUTE_ARGS`.
+- `DETAILED_ROUTE_EXTRA_ARGS` is still supported as an escape hatch and is appended after the toggles (so it can override them).
 - `WORK_HOME` controls where `logs/`, `results/`, `reports/` land.
 
 ## Benchmark Harness (control vs doomed)
@@ -203,4 +212,3 @@ Example:
 
 - Implemented: OpenROAD `-doomed_clips` feature + ORFS hook to pass args + benchmark harness.
 - Not finished: a stress configuration that shows a **large** and **reliable** speedup (e.g. >5–10%) across multiple runs; further tuning/measurement improvements are expected.
-

@@ -779,6 +779,56 @@ DETAILED_ROUTE_END_ITERATION:
   default: 64
   stages:
     - route
+DETAILED_ROUTE_EXTRA_ARGS:
+  description: >
+    Appends additional arguments to `detailed_route` without overriding
+    `DETAILED_ROUTE_ARGS`.
+  default: ""
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS:
+  description: >
+    Enable OpenROAD DRT doomed-clip scheduling (`detailed_route -doomed_clips`).
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N:
+  description: >
+    `-doomed_clips_report_n` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled
+    (0 disables printing).
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS_TOP_N:
+  description: >
+    `-doomed_clips_top_n` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.
+  default: 0
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER:
+  description: >
+    `-doomed_clips_min_iter` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.
+  default: 1
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME:
+  description: >
+    `-doomed_clips_w_runtime` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.
+  default: 1.0
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS:
+  description: >
+    `-doomed_clips_w_drvs` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.
+  default: 1.0
+  stages:
+    - route
+DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION:
+  description: >
+    `-doomed_clips_w_congestion` value when `DETAILED_ROUTE_DOOMED_CLIPS` is enabled.
+  default: 0.25
+  stages:
+    - route
 RCX_RULES:
   description: |
     RC Extraction rules file path.

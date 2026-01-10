@@ -137,10 +137,8 @@ Example output from `suite_summary.md` (32 threads, checkpoint reuse, baseline v
 | sky130hd | ibex | 359 | 357 | 1.006 |
 | sky130hd | jpeg | 348 | 350 | 0.994 |
 
-## Flow Hook Used
+## Flow Variables
 
-The flow supports appending extra arguments to the `detailed_route` command via:
-
-- `DETAILED_ROUTE_EXTRA_ARGS`
-
-This appends arguments **without overriding** `DETAILED_ROUTE_ARGS` (which is used for debugging overrides).
+- `DETAILED_ROUTE_DOOMED_CLIPS` (default 0): enable `detailed_route -doomed_clips`.
+  - Optional tuning knobs (used when enabled): `DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N`, `DETAILED_ROUTE_DOOMED_CLIPS_TOP_N`, `DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER`, `DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME`, `DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS`, `DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION`.
+- `DETAILED_ROUTE_EXTRA_ARGS`: appends raw arguments to `detailed_route` without overriding `DETAILED_ROUTE_ARGS` (escape hatch; appended after the toggles so it can override them).

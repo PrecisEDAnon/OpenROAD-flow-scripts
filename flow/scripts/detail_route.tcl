@@ -45,6 +45,28 @@ set arguments [expr {
   [concat $additional_args {-drc_report_iter_step 5}]
 }]
 
+if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS)] && $::env(DETAILED_ROUTE_DOOMED_CLIPS) } {
+  lappend arguments -doomed_clips
+  if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N)] } {
+    lappend arguments -doomed_clips_report_n $::env(DETAILED_ROUTE_DOOMED_CLIPS_REPORT_N)
+  }
+  if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS_TOP_N)] } {
+    lappend arguments -doomed_clips_top_n $::env(DETAILED_ROUTE_DOOMED_CLIPS_TOP_N)
+  }
+  if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER)] } {
+    lappend arguments -doomed_clips_min_iter $::env(DETAILED_ROUTE_DOOMED_CLIPS_MIN_ITER)
+  }
+  if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME)] } {
+    lappend arguments -doomed_clips_w_runtime $::env(DETAILED_ROUTE_DOOMED_CLIPS_W_RUNTIME)
+  }
+  if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS)] } {
+    lappend arguments -doomed_clips_w_drvs $::env(DETAILED_ROUTE_DOOMED_CLIPS_W_DRVS)
+  }
+  if { [info exists ::env(DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION)] } {
+    lappend arguments -doomed_clips_w_congestion $::env(DETAILED_ROUTE_DOOMED_CLIPS_W_CONGESTION)
+  }
+}
+
 if { [env_var_exists_and_non_empty DETAILED_ROUTE_EXTRA_ARGS] } {
   set arguments [concat $arguments $::env(DETAILED_ROUTE_EXTRA_ARGS)]
 }
