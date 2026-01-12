@@ -20,7 +20,23 @@ if { ![env_var_exists_and_non_empty FOOTPRINT] } {
   }
 }
 
+# Optional guidance: placement clusters derived from external "soft assignments".
+# CSV format: inst_name,cluster_id[,weight]
+if { [env_var_equals GPL_SOFT_PLACEMENT_CLUSTERS_ENABLE 1] && \
+     [env_var_exists_and_non_empty GPL_SOFT_PLACEMENT_CLUSTERS_FILE] } {
+  set cluster_args [list -file $::env(GPL_SOFT_PLACEMENT_CLUSTERS_FILE)]
+  append_env_var cluster_args GPL_SOFT_PLACEMENT_CLUSTERS_MIN_WEIGHT -min_weight 1
+  append_env_var cluster_args GPL_SOFT_PLACEMENT_CLUSTERS_MIN_SIZE -min_cluster_size 1
+  append_env_var cluster_args GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE -max_cluster_size 1
+  append_env_var cluster_args GPL_SOFT_PLACEMENT_CLUSTERS_SPLIT_LARGE -split_large_clusters 0
+  append_env_var cluster_args GPL_SOFT_PLACEMENT_CLUSTERS_BEST_EFFORT -best_effort 0
+  log_cmd read_soft_placement_clusters {*}$cluster_args
+}
+
 set global_placement_args {}
+
+# Randomness control for placement "views" (used by external tomography loops).
+append_env_var global_placement_args GPL_RANDOM_SEED -random_seed 1
 
 # Parameters for routability mode in global placement
 append_env_var global_placement_args GPL_ROUTABILITY_DRIVEN -routability_driven 0
