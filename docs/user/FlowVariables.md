@@ -148,7 +148,14 @@ configuration file.
 | <a name="GLOBAL_PLACEMENT_ARGS"></a>GLOBAL_PLACEMENT_ARGS| Use additional tuning parameters during global placement other than default args defined in global_place.tcl.| |
 | <a name="GLOBAL_ROUTE_ARGS"></a>GLOBAL_ROUTE_ARGS| Replaces default arguments for global route.| -congestion_iterations 30 -congestion_report_iter_step 5 -verbose|
 | <a name="GND_NETS_VOLTAGES"></a>GND_NETS_VOLTAGES| Used for IR Drop calculation.| |
+| <a name="GPL_RANDOM_SEED"></a>GPL_RANDOM_SEED| Seed for initial global placement random perturbations (maps to OpenROAD `global_placement -random_seed`).| |
 | <a name="GPL_ROUTABILITY_DRIVEN"></a>GPL_ROUTABILITY_DRIVEN| Specifies whether the placer should use routability driven placement.| 1|
+| <a name="GPL_SOFT_PLACEMENT_CLUSTERS_BEST_EFFORT"></a>GPL_SOFT_PLACEMENT_CLUSTERS_BEST_EFFORT| If set to 1, ignore missing instances when ingesting `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.| 0|
+| <a name="GPL_SOFT_PLACEMENT_CLUSTERS_FILE"></a>GPL_SOFT_PLACEMENT_CLUSTERS_FILE| CSV file of soft assignments with header `inst_name,cluster_id[,weight]`.| |
+| <a name="GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE"></a>GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE| Maximum placement cluster size when ingesting `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.| 50|
+| <a name="GPL_SOFT_PLACEMENT_CLUSTERS_MIN_SIZE"></a>GPL_SOFT_PLACEMENT_CLUSTERS_MIN_SIZE| Minimum placement cluster size when ingesting `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.| 2|
+| <a name="GPL_SOFT_PLACEMENT_CLUSTERS_MIN_WEIGHT"></a>GPL_SOFT_PLACEMENT_CLUSTERS_MIN_WEIGHT| Minimum assignment weight to keep when ingesting `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.| 0.0|
+| <a name="GPL_SOFT_PLACEMENT_CLUSTERS_SPLIT_LARGE"></a>GPL_SOFT_PLACEMENT_CLUSTERS_SPLIT_LARGE| If set to 1, split clusters larger than `GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE`.| 0|
 | <a name="GPL_TIMING_DRIVEN"></a>GPL_TIMING_DRIVEN| Specifies whether the placer should use timing driven placement.| 1|
 | <a name="GUI_TIMING"></a>GUI_TIMING| Load timing information when opening GUI. For large designs, this can be quite time consuming. Useful to disable when investigating non-timing aspects like floorplan, placement, routing, etc.| 1|
 | <a name="HOLD_SLACK_MARGIN"></a>HOLD_SLACK_MARGIN| Specifies a time margin for the slack when fixing hold violations. This option allows you to overfix or underfix (negative value, terminate retiming before 0 or positive slack). floorplan.tcl uses min of HOLD_SLACK_MARGIN and 0 (default hold slack margin). This avoids overrepair in floorplan for hold by default, but allows skipping hold repair using a negative HOLD_SLACK_MARGIN. Exiting timing repair early is useful in exploration where the .sdc has a fixed clock period at the design's target clock period and where HOLD/SETUP_SLACK_MARGIN is used to avoid overrepair (extremely long running times) when exploring different parameter settings. When an ideal clock is used, that is before CTS, a clock insertion delay of 0 is used in timing paths. This creates a mismatch between macros that have a .lib file from after CTS, when the clock is propagated. To mitigate this, OpenSTA will use subtract the clock insertion delay of macros when calculating timing with ideal clock. Provided that min_clock_tree_path and max_clock_tree_path are in the .lib file, which is the case for macros built with OpenROAD. This is less accurate than if OpenROAD had created a placeholder clock tree for timing estimation purposes prior to CTS. There will inevitably be inaccuracies in the timing calculation prior to CTS. Use a slack margin that is low enough, even negative, to avoid overrepair. Inaccuracies in the timing prior to CTS can also lead to underrepair, but there no obvious and simple way to avoid underrapir in these cases. Overrepair can lead to excessive runtimes in repair or too much buffering being added, which can present itself as congestion of hold cells or buffer cells. Another use of SETUP/HOLD_SLACK_MARGIN is design parameter exploration when trying to find the minimum clock period for a design. The SDC_FILE for a design can be quite complicated and instead of modifying the clock period in the SDC_FILE, which can be non-trivial, the clock period can be fixed at the target frequency and the SETUP/HOLD_SLACK_MARGIN can be swept to find a plausible current minimum clock period.| 0|
@@ -377,7 +384,14 @@ configuration file.
 - [DONT_BUFFER_PORTS](#DONT_BUFFER_PORTS)
 - [EARLY_SIZING_CAP_RATIO](#EARLY_SIZING_CAP_RATIO)
 - [FLOORPLAN_DEF](#FLOORPLAN_DEF)
+- [GPL_RANDOM_SEED](#GPL_RANDOM_SEED)
 - [GPL_ROUTABILITY_DRIVEN](#GPL_ROUTABILITY_DRIVEN)
+- [GPL_SOFT_PLACEMENT_CLUSTERS_BEST_EFFORT](#GPL_SOFT_PLACEMENT_CLUSTERS_BEST_EFFORT)
+- [GPL_SOFT_PLACEMENT_CLUSTERS_FILE](#GPL_SOFT_PLACEMENT_CLUSTERS_FILE)
+- [GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE](#GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE)
+- [GPL_SOFT_PLACEMENT_CLUSTERS_MIN_SIZE](#GPL_SOFT_PLACEMENT_CLUSTERS_MIN_SIZE)
+- [GPL_SOFT_PLACEMENT_CLUSTERS_MIN_WEIGHT](#GPL_SOFT_PLACEMENT_CLUSTERS_MIN_WEIGHT)
+- [GPL_SOFT_PLACEMENT_CLUSTERS_SPLIT_LARGE](#GPL_SOFT_PLACEMENT_CLUSTERS_SPLIT_LARGE)
 - [GPL_TIMING_DRIVEN](#GPL_TIMING_DRIVEN)
 - [IO_PLACER_H](#IO_PLACER_H)
 - [IO_PLACER_V](#IO_PLACER_V)
@@ -533,4 +547,3 @@ configuration file.
 - [TAP_CELL_NAME](#TAP_CELL_NAME)
 - [TECH_LEF](#TECH_LEF)
 - [USE_FILL](#USE_FILL)
-

@@ -571,6 +571,58 @@ GPL_ROUTABILITY_DRIVEN:
   stages:
     - place
   default: 1
+GPL_RANDOM_SEED:
+  description: |
+    Seed for initial global placement random perturbations (maps to OpenROAD
+    `global_placement -random_seed`).
+  stages:
+    - place
+  type: int
+GPL_SOFT_PLACEMENT_CLUSTERS_FILE:
+  description: |
+    CSV file of soft assignments with header `inst_name,cluster_id[,weight]`.
+  stages:
+    - place
+  type: string
+GPL_SOFT_PLACEMENT_CLUSTERS_MIN_WEIGHT:
+  description: |
+    Minimum assignment weight to keep when ingesting
+    `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.
+  stages:
+    - place
+  default: 0.0
+  type: float
+GPL_SOFT_PLACEMENT_CLUSTERS_MIN_SIZE:
+  description: |
+    Minimum placement cluster size when ingesting
+    `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.
+  stages:
+    - place
+  default: 2
+  type: int
+GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE:
+  description: |
+    Maximum placement cluster size when ingesting
+    `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.
+  stages:
+    - place
+  default: 50
+  type: int
+GPL_SOFT_PLACEMENT_CLUSTERS_SPLIT_LARGE:
+  description: |
+    If set to 1, split clusters larger than `GPL_SOFT_PLACEMENT_CLUSTERS_MAX_SIZE`.
+  stages:
+    - place
+  default: 0
+  type: int
+GPL_SOFT_PLACEMENT_CLUSTERS_BEST_EFFORT:
+  description: |
+    If set to 1, ignore missing instances when ingesting
+    `GPL_SOFT_PLACEMENT_CLUSTERS_FILE`.
+  stages:
+    - place
+  default: 0
+  type: int
 CAP_MARGIN:
   description: >
     Specifies a capacitance margin when fixing max capacitance violations. This
