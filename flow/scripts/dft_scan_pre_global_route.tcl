@@ -64,12 +64,11 @@ proc dft_scan_out_name {ordinal} {
 
 proc dft_set_scan_enable_case_analysis {} {
   set enable_name [dft_scan_enable_name]
-  set disable_value [dft_get_env_bool DFT_SCAN_ENABLE_DISABLED_VALUE 0]
   if { [catch {
     if { [dft_name_pattern_is_inst_pin $enable_name] } {
-      set_case_analysis $disable_value [get_pins $enable_name]
+      set_case_analysis 0 [get_pins $enable_name]
     } else {
-      set_case_analysis $disable_value [get_ports $enable_name]
+      set_case_analysis 0 [get_ports $enable_name]
     }
   } err] } {
     puts "DFT: WARNING: couldn't set_case_analysis on scan enable '$enable_name': $err"
@@ -351,32 +350,32 @@ proc dft_place_pin_near_inst {pin_name inst_name} {
   set dist_bottom [expr {$y - $yMin}]
   set dist_top [expr {$yMax - $y}]
 
-  # Pick the nearest die edge and project the pin location onto it.
+  # Try edges in ascending distance order. When IO pin density is high, the
+  # closest edge may not have a legal non-overlapping slot near the projected
+  # location, so fall back to the next-closest edge rather than forcing a large
+  # shift along the boundary.
+  #
   # - horizontal-track layers -> left/right edges
   # - vertical-track layers   -> top/bottom edges
-  set edge left
-  set min_dist $dist_left
-  if { $dist_right < $min_dist } {
-    set edge right
-    set min_dist $dist_right
-  }
-  if { $dist_bottom < $min_dist } {
-    set edge bottom
-    set min_dist $dist_bottom
-  }
-  if { $dist_top < $min_dist } {
-    set edge top
-    set min_dist $dist_top
-  }
+  set candidates [list \
+    [list $dist_left left] \
+    [list $dist_right right] \
+    [list $dist_bottom bottom] \
+    [list $dist_top top] \
+  ]
+  set candidates [lsort -integer -index 0 $candidates]
 
-  if { $edge == "left" } {
-    dft_place_pin_no_overlap $pin_name $h_layer $xMin $y
-  } elseif { $edge == "right" } {
-    dft_place_pin_no_overlap $pin_name $h_layer $xMax $y
-  } elseif { $edge == "bottom" } {
-    dft_place_pin_no_overlap $pin_name $v_layer $x $yMin
-  } else {
-    dft_place_pin_no_overlap $pin_name $v_layer $x $yMax
+  foreach cand $candidates {
+    set edge [lindex $cand 1]
+    if { $edge == "left" } {
+      if { [dft_place_pin_no_overlap $pin_name $h_layer $xMin $y] } { return }
+    } elseif { $edge == "right" } {
+      if { [dft_place_pin_no_overlap $pin_name $h_layer $xMax $y] } { return }
+    } elseif { $edge == "bottom" } {
+      if { [dft_place_pin_no_overlap $pin_name $v_layer $x $yMin] } { return }
+    } else {
+      if { [dft_place_pin_no_overlap $pin_name $v_layer $x $yMax] } { return }
+    }
   }
 }
 
@@ -434,6 +433,21 @@ proc dft_place_scan_ports_from_plan {} {
     set chain_count 1
   }
 
+  # Detect misconfiguration where scan-in/out name patterns cannot generate
+  # distinct endpoints for multiple chains (e.g. patterns without "{}").
+  #
+  # Note: OpenROAD `execute_dft_plan` can also take per-chain begin/end ports
+  # from the constraints file (and will error on duplicate endpoints), so keep
+  # this check limited to cases where ORFS does its own stitching.
+  if { $chain_count > 1 && [dft_scan_solver] != "openroad" } {
+    if { [dft_scan_in_name 0] == [dft_scan_in_name 1] } {
+      error "DFT: multiple chains require distinct scan-in endpoints when DFT_SCAN_SOLVER!=openroad; set DFT_SCAN_IN_NAME_PATTERN with \"{}\""
+    }
+    if { [dft_scan_out_name 0] == [dft_scan_out_name 1] } {
+      error "DFT: multiple chains require distinct scan-out endpoints when DFT_SCAN_SOLVER!=openroad; set DFT_SCAN_OUT_NAME_PATTERN with \"{}\""
+    }
+  }
+
   # Ensure scan ports exist and have at least one pin geometry box so global/
   # detailed route won't error out (e.g. GRT-0042). This is especially
   # important for footprint-based flows that skip `place_pins`.
@@ -489,10 +503,10 @@ proc dft_place_scan_ports_from_plan {} {
   set plan ""
   with_output_to_variable plan { report_dft_plan -verbose }
 
-  # OpenROAD stitches scan chains in lexicographic chain-name order, and uses
-  # that ordinal to select scan_in_N/scan_out_N. Mirror that here so scan port
-  # placement targets the correct chain endpoints.
+  # Preserve the chain order as reported by OpenROAD. scan_in_N/scan_out_N
+  # binding depends on the chain ordinal ordering in the plan.
   set chain_cells_by_name [dict create]
+  set chain_names_in_order {}
   set current_chain_name ""
   set current_cells {}
 
@@ -502,6 +516,7 @@ proc dft_place_scan_ports_from_plan {} {
       if { $current_chain_name != "" } {
         dict set chain_cells_by_name $current_chain_name $current_cells
       }
+      lappend chain_names_in_order $chain_name
       set current_chain_name $chain_name
       set current_cells {}
       continue
@@ -517,6 +532,7 @@ proc dft_place_scan_ports_from_plan {} {
   if { $current_chain_name != "" } {
     dict set chain_cells_by_name $current_chain_name $current_cells
   }
+  set ::dft_chain_names_in_order $chain_names_in_order
 
   set chain_order_by_name $chain_cells_by_name
 
@@ -538,7 +554,10 @@ proc dft_place_scan_ports_from_plan {} {
 
   # Place scan_in/out for each chain near its first/last scan cell.
   if { $place_scan_ports } {
-    set chain_names [lsort -ascii [dict keys $chain_order_by_name]]
+    set chain_names $chain_names_in_order
+    if { [llength $chain_names] == 0 } {
+      set chain_names [lsort -ascii [dict keys $chain_order_by_name]]
+    }
     set ordinal 0
     foreach chain_name $chain_names {
       set in_port [dft_scan_in_name $ordinal]
@@ -791,6 +810,11 @@ proc dft_parse_dft_plan_verbose_cells_by_chain {} {
     return [dict create]
   }
 
+  # Preserve the chain order as reported by OpenROAD. Tcl dict key ordering is
+  # not guaranteed, but scan_in_N/scan_out_N binding depends on the chain
+  # ordinal ordering in the plan.
+  set ::dft_chain_names_in_order {}
+
   set chain_cells_by_name [dict create]
   set current_chain_name ""
   set current_cells {}
@@ -799,6 +823,7 @@ proc dft_parse_dft_plan_verbose_cells_by_chain {} {
       if { $current_chain_name != "" } {
         dict set chain_cells_by_name $current_chain_name $current_cells
       }
+      lappend ::dft_chain_names_in_order $chain_name
       set current_chain_name $chain_name
       set current_cells {}
       continue
@@ -1055,7 +1080,12 @@ proc dft_scan_stitch_from_order {chain_order_by_name} {
     return
   }
 
-  set chain_names [lsort -ascii [dict keys $chain_order_by_name]]
+  set chain_names {}
+  if { [info exists ::dft_chain_names_in_order] && [llength $::dft_chain_names_in_order] > 0 } {
+    set chain_names $::dft_chain_names_in_order
+  } else {
+    set chain_names [lsort -ascii [dict keys $chain_order_by_name]]
+  }
   if { [llength $chain_names] == 0 } {
     puts "DFT: WARNING: no scan chains found; skipping stitching"
     return
@@ -1065,8 +1095,7 @@ proc dft_scan_stitch_from_order {chain_order_by_name} {
   set enable_name [dft_scan_enable_name]
   set scan_enable_term [dft_resolve_endpoint_term $enable_name INPUT]
   if { $scan_enable_term == "NULL" } {
-    puts "DFT: WARNING: missing scan_enable endpoint '$enable_name'; can't stitch scan chains"
-    return
+    error "DFT: missing scan_enable endpoint '$enable_name'; can't stitch scan chains"
   }
 
   # Connect scan_enable to all scan cells in the plan.
@@ -1103,9 +1132,7 @@ proc dft_scan_stitch_from_order {chain_order_by_name} {
     set in_term [dft_resolve_endpoint_term $in_name INPUT]
     set out_term [dft_resolve_endpoint_term $out_name OUTPUT]
     if { $in_term == "NULL" || $out_term == "NULL" } {
-      puts "DFT: WARNING: missing scan endpoints for chain ordinal $ordinal; skipping chain '$chain_name' ($in_name/$out_name)"
-      incr ordinal
-      continue
+      error "DFT: missing scan endpoints for chain ordinal $ordinal; can't stitch chain '$chain_name' ($in_name/$out_name)"
     }
 
     # Head: scan_in -> first.SI
@@ -1158,6 +1185,96 @@ proc dft_scan_stitch_from_order {chain_order_by_name} {
   }
 }
 
+proc dft_scan_write_scandef {chain_order_by_name out_path} {
+  set block [ord::get_db_block]
+  if { $block == "NULL" } {
+    error "DFT: can't write SCANDEF: no db block found"
+  }
+
+  set fh [open $out_path w]
+  puts $fh "VERSION 5.8 ;"
+  puts $fh "DIVIDERCHAR \"/\" ;"
+  puts $fh {BUSBITCHARS "[]" ;}
+  puts $fh "DESIGN [$block getName] ;"
+  puts $fh ""
+
+  set chain_names {}
+  if { [info exists ::dft_chain_names_in_order] && [llength $::dft_chain_names_in_order] > 0 } {
+    set chain_names $::dft_chain_names_in_order
+  } else {
+    set chain_names [lsort -ascii [dict keys $chain_order_by_name]]
+  }
+  puts $fh "SCANCHAINS [llength $chain_names] ;"
+  puts $fh ""
+
+  set ordinal 0
+  foreach chain_name $chain_names {
+    puts $fh "- $chain_name"
+
+    set in_name [dft_scan_in_name $ordinal]
+    set out_name [dft_scan_out_name $ordinal]
+    dft_scan_write_scandef_endpoint $fh START $in_name 0
+
+    puts $fh "+ ORDERED"
+    foreach inst_name [dict get $chain_order_by_name $chain_name] {
+      set inst [$block findInst $inst_name]
+      if { $inst == "NULL" } {
+        continue
+      }
+      set si [dft_scan_get_in_iterm $inst]
+      set so [dft_scan_get_out_iterm $inst]
+      if { $si == "NULL" || $so == "NULL" } {
+        puts "DFT: WARNING: can't find scan pins for scandef line '$inst_name'"
+        continue
+      }
+      set si_name [[$si getMTerm] getName]
+      set so_name [[$so getMTerm] getName]
+      puts $fh "  $inst_name ( IN $si_name ) ( OUT $so_name )"
+    }
+
+    puts $fh "+ PARTITION default"
+    dft_scan_write_scandef_endpoint $fh STOP $out_name 1
+    puts $fh ""
+    incr ordinal
+  }
+
+  puts $fh "END SCANCHAINS"
+  puts $fh ""
+  puts $fh "END DESIGN"
+  close $fh
+}
+
+proc dft_scan_write_scandef_endpoint {fh keyword endpoint_name add_semicolon} {
+  if { [string first "/" $endpoint_name] >= 0 } {
+    set idx [string last "/" $endpoint_name]
+    set inst_name [string range $endpoint_name 0 [expr {$idx - 1}]]
+    set pin_name [string range $endpoint_name [expr {$idx + 1}] end]
+    puts -nonewline $fh "+ $keyword $inst_name $pin_name"
+  } else {
+    puts -nonewline $fh "+ $keyword PIN $endpoint_name"
+  }
+  if { $add_semicolon } {
+    puts $fh " ;"
+  } else {
+    puts $fh ""
+  }
+}
+
+proc dft_scan_store_scan_chains_in_odb {chain_order_by_name {tag "pregrt"}} {
+  if { ![info exists ::env(RESULTS_DIR)] } {
+    puts "DFT: WARNING: RESULTS_DIR not set; can't store scan chains for export"
+    return
+  }
+
+  set out_path [file join $::env(RESULTS_DIR) "dft_scan_${tag}.scandef"]
+  dft_scan_write_scandef $chain_order_by_name $out_path
+
+  # Import the generated SCANDEF to populate OpenDB's DFT database so later
+  # stages (e.g., final_report) can export scan chains via `write_scandef`.
+  read_def -incremental $out_path
+  puts "DFT: stored scan chains in OpenDB via '$out_path'"
+}
+
 proc dft_scan_get_chain_order_by_name {{tag "pregrt"}} {
   # Cached by dft_place_scan_ports_from_plan when scan port placement runs.
   if { [info exists ::dft_chain_order_by_name] && [dict size $::dft_chain_order_by_name] > 0 } {
@@ -1188,7 +1305,7 @@ proc dft_scan_get_chain_order_by_name {{tag "pregrt"}} {
 
 proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   # Must match `flow/scripts/dft_scan_post_floorplan.tcl`.
-  set clock_mixing [dft_get_env DFT_CLOCK_MIXING "clock_mix"]
+  set clock_mixing [dft_get_env DFT_CLOCK_MIXING "no_mix"]
   if { $clock_mixing_override != "" } {
     set clock_mixing $clock_mixing_override
   }
@@ -1202,33 +1319,33 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
     set max_length [dft_get_env DFT_MAX_LENGTH ""]
   }
   set chain_count [dft_get_env DFT_CHAIN_COUNT ""]
-  set scan_order_metric [dft_get_env DFT_SCAN_ORDER_METRIC ""]
-  set scan_order_solver [dft_get_env DFT_SCAN_ORDER_SOLVER ""]
-  set scanopt_rounds [dft_get_env DFT_SCANOPT_ROUNDS ""]
-  set scanopt_seed [dft_get_env DFT_SCANOPT_SEED ""]
-  set vertical_weight [dft_get_env DFT_VERTICAL_WEIGHT ""]
-  set max_imbalance [dft_get_env DFT_MAX_IMBALANCE ""]
-  if { $max_imbalance == "" } {
-    set max_imbalance [dft_get_env DFT_MAX_IMBALANCE_PERCENT ""]
-  }
-  set timing_setup_weight [dft_get_env DFT_TIMING_SETUP_WEIGHT ""]
-  set timing_hold_weight [dft_get_env DFT_TIMING_HOLD_WEIGHT ""]
-  set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
-  set scan_order_constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
-  set insert_lockup [dft_get_env DFT_INSERT_LOCKUP ""]
-  set lockup_cell_rising [dft_get_env DFT_LOCKUP_CELL_RISING ""]
-  set lockup_cell_falling [dft_get_env DFT_LOCKUP_CELL_FALLING ""]
-  set lockup_in_pin [dft_get_env DFT_LOCKUP_IN_PIN ""]
-  set lockup_out_pin [dft_get_env DFT_LOCKUP_OUT_PIN ""]
-  set lockup_clock_pin_rising [dft_get_env DFT_LOCKUP_CLOCK_PIN_RISING ""]
-  set lockup_clock_pin_falling [dft_get_env DFT_LOCKUP_CLOCK_PIN_FALLING ""]
-  set timing_buffer_cell [dft_get_env DFT_TIMING_BUFFER_CELL ""]
-  set timing_buffer_in_pin [dft_get_env DFT_TIMING_BUFFER_IN_PIN ""]
-  set timing_buffer_out_pin [dft_get_env DFT_TIMING_BUFFER_OUT_PIN ""]
-  set max_chains [dft_get_env DFT_MAX_CHAINS ""]
-  if { $chain_count == "" && $max_chains == "" && $max_length == "" } {
-    set max_chains 1
-  }
+		  set scan_order_metric [dft_get_env DFT_SCAN_ORDER_METRIC ""]
+		  set scan_order_solver [dft_get_env DFT_SCAN_ORDER_SOLVER ""]
+			  set scanopt_rounds [dft_get_env DFT_SCANOPT_ROUNDS ""]
+			  set scanopt_seed [dft_get_env DFT_SCANOPT_SEED ""]
+			  set scanopt_time_limit [dft_get_env DFT_SCANOPT_TIME_LIMIT ""]
+			  set scanopt_temp_control [dft_get_env DFT_SCANOPT_TEMP_CONTROL ""]
+			  set scanopt_t_div [dft_get_env DFT_SCANOPT_T_DIV ""]
+			  set vertical_weight [dft_get_env DFT_VERTICAL_WEIGHT ""]
+			  set max_imbalance [dft_get_env DFT_MAX_IMBALANCE ""]
+			  set constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
+	  set timing_setup_weight [dft_get_env DFT_TIMING_SETUP_WEIGHT ""]
+	  set timing_hold_weight [dft_get_env DFT_TIMING_HOLD_WEIGHT ""]
+	  set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
+	  set exclude_shift_registers [dft_get_env DFT_EXCLUDE_SHIFT_REGISTERS ""]
+	  set prefer_qbar [dft_get_env DFT_PREFER_QBAR ""]
+	  set shift_register_min_length [dft_get_env DFT_SHIFT_REGISTER_MIN_LENGTH ""]
+	  set insert_lockup [dft_get_env DFT_INSERT_LOCKUP ""]
+	  set lockup_cell_rising [dft_get_env DFT_LOCKUP_CELL_RISING ""]
+	  set lockup_cell_falling [dft_get_env DFT_LOCKUP_CELL_FALLING ""]
+	  set lockup_in_pin [dft_get_env DFT_LOCKUP_IN_PIN ""]
+	  set lockup_out_pin [dft_get_env DFT_LOCKUP_OUT_PIN ""]
+	  set lockup_clock_pin_rising [dft_get_env DFT_LOCKUP_CLOCK_PIN_RISING ""]
+	  set lockup_clock_pin_falling [dft_get_env DFT_LOCKUP_CLOCK_PIN_FALLING ""]
+	  set timing_buffer_cell [dft_get_env DFT_TIMING_BUFFER_CELL ""]
+	  set timing_buffer_in_pin [dft_get_env DFT_TIMING_BUFFER_IN_PIN ""]
+	  set timing_buffer_out_pin [dft_get_env DFT_TIMING_BUFFER_OUT_PIN ""]
+	  set max_chains [dft_get_env DFT_MAX_CHAINS ""]
 
   set dft_args [list \
     -clock_mixing $clock_mixing \
@@ -1245,15 +1362,27 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   if { $scanopt_rounds != "" } {
     lappend dft_args -scanopt_rounds $scanopt_rounds
   }
-  if { $scanopt_seed != "" } {
-    lappend dft_args -scanopt_seed $scanopt_seed
-  }
-  if { $vertical_weight != "" } {
-    lappend dft_args -vertical_weight $vertical_weight
-  }
-  if { $max_imbalance != "" } {
-    lappend dft_args -max_imbalance $max_imbalance
-  }
+	  if { $scanopt_seed != "" } {
+	    lappend dft_args -scanopt_seed $scanopt_seed
+	  }
+		  if { $scanopt_time_limit != "" } {
+		    lappend dft_args -scanopt_time_limit $scanopt_time_limit
+		  }
+		  if { $scanopt_temp_control != "" } {
+		    lappend dft_args -scanopt_temp_control $scanopt_temp_control
+		  }
+		  if { $scanopt_t_div != "" } {
+		    lappend dft_args -scanopt_t_div $scanopt_t_div
+		  }
+			  if { $vertical_weight != "" } {
+			    lappend dft_args -vertical_weight $vertical_weight
+			  }
+		  if { $max_imbalance != "" } {
+	    lappend dft_args -max_imbalance $max_imbalance
+	  }
+	  if { $constraints_file != "" } {
+	    lappend dft_args -scan_order_constraints_file $constraints_file
+	  }
   if { $timing_setup_weight != "" } {
     lappend dft_args -timing_setup_weight $timing_setup_weight
   }
@@ -1263,8 +1392,14 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   if { $timing_critical_slack != "" } {
     lappend dft_args -timing_critical_slack $timing_critical_slack
   }
-  if { $scan_order_constraints_file != "" } {
-    lappend dft_args -scan_order_constraints_file $scan_order_constraints_file
+  if { $exclude_shift_registers != "" } {
+    lappend dft_args -exclude_shift_registers $exclude_shift_registers
+  }
+  if { $prefer_qbar != "" } {
+    lappend dft_args -prefer_qbar $prefer_qbar
+  }
+  if { $shift_register_min_length != "" } {
+    lappend dft_args -shift_register_min_length $shift_register_min_length
   }
   if { $insert_lockup != "" } {
     lappend dft_args -insert_lockup $insert_lockup
@@ -1313,21 +1448,17 @@ proc dft_apply_dft_config {{clock_mixing_override ""}} {
   set_dft_config {*}$args
 }
 
-proc dft_check_scan_clock_mixing_policy {{solver ""}} {
-  # OpenROAD DFT can generate mixed-clock/edge chains in clock_mix mode.
-  # If stitching is done by OpenROAD and lockup insertion is enabled, allow
-  # mixed domains; otherwise enforce the user policy.
+proc dft_check_scan_clock_mixing_policy {} {
+  # OpenROAD DFT can generate mixed-clock/edge chains in clock_mix mode. That
+  # implies lockup insertion between domains during stitching; if lockup cells
+  # are not configured, stitching will fail. Make this visible (or fatal) based
+  # on a user policy (with AUTO fallback to no_mix).
   set policy [dft_get_env_lower DFT_LOCKUP_POLICY "auto"]
   if { $policy in {"0" "off" "false" "no"} } {
     return {}
   }
 
-  if { $solver == "" } {
-    set solver [dft_scan_solver]
-  }
-  set lockup_supported [expr {$solver == "openroad" && [dft_get_env_bool DFT_INSERT_LOCKUP 0]}]
-
-  set clock_mixing [dft_get_env_lower DFT_CLOCK_MIXING "clock_mix"]
+  set clock_mixing [dft_get_env_lower DFT_CLOCK_MIXING "no_mix"]
 
   set plan ""
   if { [catch { with_output_to_variable plan { report_dft_plan -verbose } } err] } {
@@ -1356,7 +1487,15 @@ proc dft_check_scan_clock_mixing_policy {{solver ""}} {
         set cur_edge [string trim $edge]
       }
       if { $cur_clock != "" && $cur_edge != "" } {
-        dict set domains $current_chain "${cur_clock}/${cur_edge}" 1
+        # In `no_mix`, edge polarity is allowed within-chain (handled by
+        # OpenROAD's "mid" polarity ordering). Only mixing different clock
+        # *names* is a violation. In `clock_mix`, treat clock+edge together for
+        # lockup policy checks.
+        if { $clock_mixing == "no_mix" } {
+          dict set domains $current_chain $cur_clock 1
+        } else {
+          dict set domains $current_chain "${cur_clock}/${cur_edge}" 1
+        }
       }
     }
   }
@@ -1377,12 +1516,7 @@ proc dft_check_scan_clock_mixing_policy {{solver ""}} {
     error "DFT: clock mixing violation: DFT_CLOCK_MIXING=no_mix but chains are mixed: $mixed_chains"
   }
 
-  if { $lockup_supported } {
-    puts "DFT: mixed-clock/edge chains detected ($mixed_chains); proceeding with lockup insertion (DFT_INSERT_LOCKUP=1)"
-    return {}
-  }
-
-  set msg "DFT: clock_mix produced mixed-clock/edge chains ($mixed_chains) but lockup insertion is disabled. Consider DFT_CLOCK_MIXING=no_mix or set DFT_INSERT_LOCKUP=1 with lockup cell/pin config."
+  set msg "DFT: clock_mix produced mixed-clock/edge chains ($mixed_chains); lockup elements are required. Configure lockup cells (set_dft_config -lockup_*) or use DFT_CLOCK_MIXING=no_mix."
   if { $policy in {"error" "fatal"} } {
     error $msg
   }
@@ -1393,21 +1527,21 @@ proc dft_check_scan_clock_mixing_policy {{solver ""}} {
 }
 
 proc dft_stitch_scan_chains {{tag "pregrt"}} {
-  set solver [dft_scan_solver]
-  set metric [string toupper [string trim [dft_get_env DFT_SCAN_ORDER_METRIC ""]]]
-  if { $solver == "scanopt_next" && $metric == "PIN_TO_NET" } {
-    puts "DFT: WARNING: DFT_SCAN_SOLVER=scanopt_next doesn't support PIN_TO_NET; using execute_dft_plan"
-    set solver "openroad"
-  }
-
   set policy [dft_get_env_lower DFT_LOCKUP_POLICY "auto"]
-  set mixed_chains [dft_check_scan_clock_mixing_policy $solver]
+  set mixed_chains [dft_check_scan_clock_mixing_policy]
   if { $policy == "auto" && [llength $mixed_chains] > 0 } {
     puts "DFT: AUTO: mixed-clock/edge chains detected ($mixed_chains); re-running with DFT_CLOCK_MIXING=no_mix"
     dft_apply_dft_config "no_mix"
     catch { unset ::dft_chain_order_by_name }
     dft_place_scan_ports_from_plan
-    set mixed_chains [dft_check_scan_clock_mixing_policy $solver]
+    set mixed_chains [dft_check_scan_clock_mixing_policy]
+  }
+
+  set solver [dft_scan_solver]
+  set metric [string toupper [string trim [dft_get_env DFT_SCAN_ORDER_METRIC ""]]]
+  if { $solver == "scanopt_next" && $metric == "PIN_TO_NET" } {
+    puts "DFT: WARNING: DFT_SCAN_SOLVER=scanopt_next doesn't support PIN_TO_NET; using execute_dft_plan"
+    set solver "openroad"
   }
 
   if { $solver == "openroad" } {
@@ -1417,6 +1551,7 @@ proc dft_stitch_scan_chains {{tag "pregrt"}} {
 
   set chain_order_by_name [dft_scan_get_chain_order_by_name $tag]
   dft_scan_stitch_from_order $chain_order_by_name
+  dft_scan_store_scan_chains_in_odb $chain_order_by_name $tag
 }
 
 dft_apply_dft_config
@@ -1434,4 +1569,9 @@ if { $defer_stitch } {
   dft_stitch_scan_chains "pregrt"
   dft_buffer_scan_enable_net
   dft_mark_scan_nets_dont_touch
+  # QoR proxy: placement-based scan chain cost (prints + emits metrics).
+  catch {
+    source [file join [file dirname [info script]] dft_scan_chain_cost.tcl]
+    dft_report_scan_chain_cost "pregrt"
+  }
 }
