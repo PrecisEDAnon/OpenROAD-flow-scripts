@@ -15,24 +15,29 @@ file is intentionally tracked (gitignore does not apply to tracked files).
 
 The deliverable is **four branches total** (two repos × normal/rebased):
 
+Repos (GitHub):
+
+- ORFS: `git@github.com:PrecisEDAnon/OpenROAD-flow-scripts.git`
+- OpenROAD: `git@github.com:precisedanon/OpenROAD.git`
+
 ### ORFS (OpenROAD-flow-scripts)
 
 - `orfs-surrogate-normal`
   - Base: `93c42b2e6` + **1 commit** (minimal surrogate integration + docs)
-  - OpenROAD submodule pin: `tools/OpenROAD @ 0b3616e102` (`openroad-surrogate-normal`)
+  - OpenROAD submodule pin: `tools/OpenROAD @ 0b3616e102dbb3a9d76bc8233021361a4bad20bf` (`openroad-surrogate-normal`)
   - Guide: `surrogate_autotuner_guide.md`
 - `orfs-surrogate-rebased`
   - Rebased on The-OpenROAD-Project `master` (then surrogate plumbing + docs)
-  - OpenROAD submodule pin: `tools/OpenROAD @ f5de6e7462` (`openroad-surrogate-rebased`)
+  - OpenROAD submodule pin: `tools/OpenROAD @ f5de6e746232f0e8fc33915efba964ac3c38fc1d` (`openroad-surrogate-rebased`)
   - Guide: `flow/surrogate_autotuner_guide.md`
 
 ### OpenROAD (tools/OpenROAD)
 
 - `openroad-surrogate-normal`
-  - Base: `7bc521f36a` + **1 commit** `0b3616e102` (“surrogate: add autotune support”)
+  - Base: `7bc521f36a` + **1 commit** `0b3616e102dbb3a9d76bc8233021361a4bad20bf` (“surrogate: add autotune support”)
   - Surrogate commands are compiled in and available without extra gating.
 - `openroad-surrogate-rebased`
-  - Base: OpenROAD `upstream/master` + `a04f00a450` + `f5de6e7462`
+  - Base: OpenROAD `upstream/master` + `a04f00a450` + `f5de6e746232f0e8fc33915efba964ac3c38fc1d`
   - Compile-time gate: `-D ENABLE_SURROGATE=ON` (default `OFF`)
   - Runtime gate: `OPENROAD_ENABLE_SURROGATE=1` (default `OFF`)
   - Surrogate TCL commands are only registered when both gates are enabled.
@@ -41,6 +46,13 @@ Pairing rules:
 
 - `orfs-surrogate-normal` ↔ `openroad-surrogate-normal`
 - `orfs-surrogate-rebased` ↔ `openroad-surrogate-rebased`
+
+Quick verification (precisedanon):
+
+- OpenROAD branch heads:
+  - `openroad-surrogate-normal` → `0b3616e102dbb3a9d76bc8233021361a4bad20bf`
+  - `openroad-surrogate-rebased` → `f5de6e746232f0e8fc33915efba964ac3c38fc1d`
+- ORFS `tools/OpenROAD` gitlink matches the corresponding OpenROAD head on each branch (see pins above).
 
 ## Quick run (normal vs rebased)
 
