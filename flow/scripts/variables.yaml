@@ -34,6 +34,24 @@ TNS_END_PERCENT:
     - cts
     - floorplan
     - grt
+FLOORPLAN_TNS_END_PERCENT:
+  description: >
+    Overrides `TNS_END_PERCENT` for the floorplan-stage `repair_timing` call
+    (useful to keep pre-placement timing repair fast when `TNS_END_PERCENT` is
+    set high for later stages).
+  stages:
+    - floorplan
+FLOORPLAN_MAX_REPAIRS_PER_PASS:
+  description: >
+    Overrides `MAX_REPAIRS_PER_PASS` for the floorplan-stage `repair_timing` call.
+  stages:
+    - floorplan
+FLOORPLAN_MAX_REPAIR_TIMING_ITER:
+  description: >
+    Pass-through to `repair_timing -max_iterations` for the floorplan-stage
+    `repair_timing` call.
+  stages:
+    - floorplan
 ROUTING_LAYER_ADJUSTMENT:
   default: 0.5
   description: >
@@ -67,8 +85,11 @@ ROUTING_LAYER_ADJUSTMENT:
     - final
 RECOVER_POWER:
   description: >
-    Specifies how many percent of paths with positive slacks can be slowed for
-    power savings [0-100].
+    Effort for OpenROAD `repair_timing -recover_power` [0-100]. Higher values
+    consider more eligible cells for power recovery (downsizing, VT swaps when
+    available, and safe non-clock buffer removal). When setup timing is already
+    failing, recover-power may trade a small additional setup WNS budget for
+    power savings.
   default: 0
 SKIP_INCREMENTAL_REPAIR:
   default: 0
@@ -643,6 +664,15 @@ SETUP_SLACK_MARGIN:
     - floorplan
     - grt
   default: 0
+REPAIR_TIMING_SETUP_ONLY:
+  default: 0
+  description: >
+    If set, `repair_timing_helper` will add `-setup` when no explicit `-setup`
+    or `-hold` flag is provided, effectively disabling hold repair in stages
+    that call `repair_timing_helper` without flags (e.g., CTS, global route).
+  stages:
+    - cts
+    - grt
 SETUP_REPAIR_SEQUENCE:
   description: |
     Specifies the sequence of moves to do in repair_timing -setup. This should be a string
@@ -1112,6 +1142,13 @@ RTLMP_ARGS:
     Overrides all other RTL macro placer arguments.
   stages:
     - floorplan
+SKIP_RTL_MACRO_PLACER:
+  default: 0
+  description: >
+    Skip `rtl_macro_placer` even when macros exist (preserves macro locations from
+    `FLOORPLAN_DEF`, etc.).
+  stages:
+    - floorplan
 GDS_ALLOW_EMPTY:
   description: >
     Regular expression of module names of macros that have no .gds file
@@ -1205,6 +1242,17 @@ OPENROAD_HIERARCHICAL:
 MAX_REPAIR_TIMING_ITER:
   description: >
     Maximum number of iterations for repair setup and repair hold.
+  stages:
+    - cts
+    - floorplan
+    - grt
+    - place
+MAX_REPAIRS_PER_PASS:
+  default: 1
+  description: >
+    Pass-through to `repair_timing -max_repairs_per_pass` (default: 1). Higher values
+    allow more transforms per pass on the worst paths, at the cost of runtime and
+    potentially very large ECO growth.
   stages:
     - cts
     - floorplan

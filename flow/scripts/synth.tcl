@@ -9,6 +9,43 @@ if { $::env(SYNTH_GUT) } {
   delete $::env(DESIGN_NAME)/c:*
 }
 
+if { [env_var_equals SYNTH_GATE_REMAP 1] } {
+  puts "Gate-level remap enabled (SYNTH_GATE_REMAP=1)."
+
+  # Flatten functional stdcell implementations imported from Liberty into the
+  # design, then remap with ABC. This is intended for gate-level inputs where
+  # the goal is to re-optimize for delay (and optionally restructure logic)
+  # rather than preserve the original mapping.
+  #
+  # Notes:
+  # - `read_liberty -wb` marks cells as whiteboxes; use `flatten -wb` so those
+  #   implementations are eligible for flattening.
+  # - Users should blackbox sequential/macros via SYNTH_BLACKBOXES to prevent
+  #   flattening large/unsupported blocks.
+  log_cmd flatten -wb $::env(DESIGN_NAME)
+  opt -fast -full
+
+  # Map to platform library.
+  log_cmd abc {*}$abc_args
+
+  splitnets
+  opt_clean -purge
+
+  hilomap -singleton \
+    -hicell {*}$::env(TIEHI_CELL_AND_PORT) \
+    -locell {*}$::env(TIELO_CELL_AND_PORT)
+
+  insbuf -buf {*}$::env(MIN_BUF_CELL_AND_PORTS)
+
+  tee -o $::env(REPORTS_DIR)/synth_check.txt check
+  tee -o $::env(REPORTS_DIR)/synth_stat.txt stat {*}$lib_args
+  check -assert
+
+  write_verilog -nohex -nodec $::env(RESULTS_DIR)/1_2_yosys.v
+  log_cmd exec cp $::env(SDC_FILE) $::env(RESULTS_DIR)/1_synth.sdc
+  exit
+}
+
 if { [env_var_exists_and_non_empty SYNTH_KEEP_MODULES] } {
   foreach module $::env(SYNTH_KEEP_MODULES) {
     select -module $module
@@ -89,13 +126,15 @@ exec -- $::env(PYTHON_EXE) $::env(SCRIPTS_DIR)/mem_dump.py \
   --max-bits $::env(SYNTH_MEMORY_MAX_BITS) $::env(RESULTS_DIR)/mem.json
 
 if { [env_var_exists_and_non_empty SYNTH_RETIME_MODULES] } {
-  select $::env(SYNTH_RETIME_MODULES)
-  opt -fast -full
-  memory_map
-  opt -full
-  techmap
-  abc -dff -script $::env(SCRIPTS_DIR)/abc_retime.script
-  select -clear
+  foreach module $::env(SYNTH_RETIME_MODULES) {
+    select -module $module
+    opt -fast -full
+    memory_map
+    opt -full
+    techmap
+    abc -dff -script $::env(SCRIPTS_DIR)/abc_retime.script
+    select -clear
+  }
 }
 
 if {
@@ -183,6 +222,12 @@ tee -o $::env(REPORTS_DIR)/synth_stat.txt stat {*}$lib_args
 # check the design is composed exclusively of target cells, and
 # check for other problems
 if {
+  [env_var_exists_and_non_empty SYNTH_CELL_MODEL_FILES]
+} {
+  # Gate-level resynthesis can leave (intentional) blackboxes for sequential
+  # cells/macros; only assert general consistency here.
+  check -assert
+} elseif {
   ![env_var_exists_and_non_empty SYNTH_WRAPPED_OPERATORS] &&
   ![env_var_exists_and_non_empty SWAP_ARITH_OPERATORS]
 } {

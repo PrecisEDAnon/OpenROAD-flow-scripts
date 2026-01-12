@@ -13,12 +13,42 @@ proc log_cmd { cmd args } {
   return $result
 }
 
+# Guardrail: forbid hidden STA derates via env vars (ECP "metric gaming").
+proc flw_disallow_timing_derate_env_vars { } {
+  set disallowed_env_vars {
+    ECP_LATE_DATA_DERATE
+    ECP_EARLY_DATA_DERATE
+    ECP_LATE_CLOCK_DERATE
+    ECP_EARLY_CLOCK_DERATE
+  }
+  foreach var $disallowed_env_vars {
+    if { [info exists ::env($var)] && $::env($var) ne "" } {
+      error "Disallowed timing-derate environment variable '$var' is set to '$::env($var)'. Unset it to run timing/ECP flows."
+    }
+  }
+}
+flw_disallow_timing_derate_env_vars
+
 proc repair_timing_helper { args } {
+  if { [env_var_equals REPAIR_TIMING_SETUP_ONLY 1] } {
+    set has_setup [expr { [lsearch -exact $args "-setup"] != -1 }]
+    set has_hold [expr { [lsearch -exact $args "-hold"] != -1 }]
+    if { !$has_setup && !$has_hold } {
+      lappend args -setup
+    }
+  }
+
   set additional_args {}
   append_env_var additional_args SETUP_SLACK_MARGIN -setup_margin 1
   append_env_var additional_args HOLD_SLACK_MARGIN -hold_margin 1
-  append_env_var additional_args SETUP_MOVE_SEQUENCE -sequence 1
+  if { [env_var_exists_and_non_empty SETUP_REPAIR_SEQUENCE] } {
+    lappend additional_args -sequence $::env(SETUP_REPAIR_SEQUENCE)
+  } else {
+    append_env_var additional_args SETUP_MOVE_SEQUENCE -sequence 1
+  }
   append_env_var additional_args TNS_END_PERCENT -repair_tns 1
+  append_env_var additional_args MAX_REPAIR_TIMING_ITER -max_iterations 1
+  append_env_var additional_args MAX_REPAIRS_PER_PASS -max_repairs_per_pass 1
   append_env_var additional_args SKIP_PIN_SWAP -skip_pin_swap 0
   append_env_var additional_args SKIP_GATE_CLONING -skip_gate_cloning 0
   append_env_var additional_args SKIP_BUFFER_REMOVAL -skip_buffer_removal 0
@@ -45,8 +75,8 @@ proc recover_power_helper { } {
   if { $::env(RECOVER_POWER) == 0 } {
     return
   }
-  puts "Downsizing/switching to higher Vt for non critical gates for power recovery"
-  puts "Percent of paths optimized $::env(RECOVER_POWER)"
+  puts "Power recovery: downsizing / VT swap on non-critical cells"
+  puts "Recover power effort (%) $::env(RECOVER_POWER)"
   report_tns
   report_wns
   report_power

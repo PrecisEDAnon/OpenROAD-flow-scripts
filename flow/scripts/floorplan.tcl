@@ -139,7 +139,15 @@ if { $::env(REMOVE_ABC_BUFFERS) } {
   remove_buffers
 } else {
   # Skip clone & split
-  repair_timing_helper -setup -skip_last_gasp -sequence "unbuffer,sizeup,swap,buffer,vt_swap"
+  if { [env_var_exists_and_non_empty FLOORPLAN_TNS_END_PERCENT] } {
+    set ::env(TNS_END_PERCENT) $::env(FLOORPLAN_TNS_END_PERCENT)
+  }
+  if { [env_var_exists_and_non_empty FLOORPLAN_MAX_REPAIRS_PER_PASS] } {
+    set ::env(MAX_REPAIRS_PER_PASS) $::env(FLOORPLAN_MAX_REPAIRS_PER_PASS)
+  }
+  set additional_args_repair_timing ""
+  append_env_var additional_args_repair_timing FLOORPLAN_MAX_REPAIR_TIMING_ITER -max_iterations 1
+  repair_timing_helper -setup -skip_last_gasp -sequence "unbuffer,sizeup,swap,buffer,vt_swap" {*}$additional_args_repair_timing
 }
 
 puts "Default units for flow"

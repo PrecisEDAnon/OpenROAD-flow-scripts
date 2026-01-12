@@ -468,13 +468,17 @@ clean_resize:
 #-------------------------------------------------------------------------------
 $(eval $(call do-step,3_5_place_dp,$(RESULTS_DIR)/3_4_place_resized.odb,detail_place))
 
+ifeq ($(ENABLE_PLACE_REPAIR_TIMING),1)
+$(eval $(call do-copy,3_place,3_6_place_repair_timing.odb,))
+else
 $(eval $(call do-copy,3_place,3_5_place_dp.odb,))
+endif
 
 $(eval $(call do-copy,3_place,2_floorplan.sdc,,.sdc))
 
 .PHONY: do-place
 do-place:
-	$(UNSET_AND_MAKE) do-3_1_place_gp_skip_io do-3_2_place_iop do-3_3_place_gp do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc
+	$(UNSET_AND_MAKE) do-3_1_place_gp_skip_io do-3_2_place_iop do-3_3_place_gp do-3_4_place_resized do-3_5_place_dp do-3_place.sdc $(if $(filter 1,$(ENABLE_PLACE_REPAIR_TIMING)),do-3_6_place_repair_timing,) do-3_place
 
 # Custom repair_timing target after placement  
 $(eval $(call do-step,3_6_place_repair_timing,$(RESULTS_DIR)/3_5_place_dp.odb $(RESULTS_DIR)/3_place.sdc,repair_timing_post_place))  

@@ -32,6 +32,16 @@ proc read_checkpoint { file } {
 
 proc read_design_sources { } {
   # We are reading Verilog sources
+  if { [env_var_exists_and_non_empty SYNTH_CELL_MODEL_FILES] } {
+    foreach file $::env(SYNTH_CELL_MODEL_FILES) {
+      read_verilog -sv $file
+    }
+  }
+  #
+  # Read stdcells/macros from Liberty as blackboxes. When SYNTH_CELL_MODEL_FILES
+  # is set, synth_stdcells.tcl uses read_liberty -nooverwrite to avoid
+  # clobbering the functional Verilog cell models above while still providing
+  # stubs for any missing modules (e.g., sequential cells/macros).
   source $::env(SCRIPTS_DIR)/synth_stdcells.tcl
 
   # Setup verilog include directories

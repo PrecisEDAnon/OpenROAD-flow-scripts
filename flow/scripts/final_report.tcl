@@ -24,15 +24,21 @@ if {
   && !$::env(SKIP_DETAILED_ROUTE)
 } {
   # RCX section
-  define_process_corner -ext_model_index 0 X
-  extract_parasitics -ext_model_file $::env(RCX_RULES)
+  set spef_file $::env(RESULTS_DIR)/6_final.spef
+  if { [env_var_equals REUSE_FINAL_SPEF 1] && [file exists $spef_file] } {
+    puts "REUSE_FINAL_SPEF=1: reading existing SPEF $spef_file"
+    read_spef $spef_file
+  } else {
+    define_process_corner -ext_model_index 0 X
+    extract_parasitics -ext_model_file $::env(RCX_RULES)
 
-  # Write Spef
-  write_spef $::env(RESULTS_DIR)/6_final.spef
-  file delete $::env(DESIGN_NAME).totCap
+    # Write Spef
+    write_spef $spef_file
+    file delete $::env(DESIGN_NAME).totCap
 
-  # Read Spef for OpenSTA
-  read_spef $::env(RESULTS_DIR)/6_final.spef
+    # Read Spef for OpenSTA
+    read_spef $spef_file
+  }
 
   # Static IR drop analysis
   if { [env_var_exists_and_non_empty PWR_NETS_VOLTAGES] } {

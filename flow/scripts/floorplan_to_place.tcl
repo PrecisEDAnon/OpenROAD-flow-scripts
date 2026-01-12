@@ -370,6 +370,7 @@ estimate_parasitics -placement
 
 set additional_args_repair_timing ""
 append_env_var additional_args_repair_timing MAX_REPAIR_TIMING_ITER -max_iterations 1
+append_env_var additional_args_repair_timing MAX_REPAIRS_PER_PASS -max_repairs_per_pass 1
 
 log_cmd repair_timing -repair_tns $::env(TNS_END_PERCENT) \
   {*}$additional_args_repair_timing

@@ -67,7 +67,14 @@ if { [find_macros] != "" } {
     set all_args $::env(RTLMP_ARGS)
   }
 
-  log_cmd rtl_macro_placer {*}$all_args
+  if { [env_var_equals SKIP_RTL_MACRO_PLACER 1] } {
+    puts "SKIP_RTL_MACRO_PLACER=1: skipping rtl_macro_placer (preserving existing macro locations)."
+    foreach inst [find_macros] {
+      $inst setPlacementStatus FIRM
+    }
+  } else {
+    log_cmd rtl_macro_placer {*}$all_args
+  }
 
   source $::env(SCRIPTS_DIR)/placement_blockages.tcl
   block_channels $blockage_width

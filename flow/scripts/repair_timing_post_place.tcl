@@ -9,7 +9,9 @@ set_placement_padding -global \
 
 puts "Repair setup and hold violations"
 estimate_parasitics -placement
-log_cmd repair_timing -repair_tns $::env(TNS_END_PERCENT)
+set additional_args ""
+append_env_var additional_args MAX_REPAIR_TIMING_ITER -max_iterations 1
+repair_timing_helper -setup {*}$additional_args
 
 # Legalize placement after timing repair
 detailed_placement

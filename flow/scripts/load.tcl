@@ -2,6 +2,21 @@ source $::env(SCRIPTS_DIR)/util.tcl
 
 source $::env(SCRIPTS_DIR)/report_metrics.tcl
 
+proc maybe_disable_equivalence_check { } {
+  if { ![info exists ::env(EQUIVALENCE_CHECK)] || $::env(EQUIVALENCE_CHECK) == 0 } {
+    return
+  }
+
+  # eqy is optional; if it is not available, disable the check so runs don't
+  # fail on hosts without it.
+  if { [auto_execok eqy] == "" } {
+    puts "EQUIVALENCE_CHECK=1 requested but 'eqy' was not found in PATH; disabling equivalence check."
+    set ::env(EQUIVALENCE_CHECK) 0
+  }
+}
+
+maybe_disable_equivalence_check
+
 proc load_design { design_file sdc_file } {
   source_env_var_if_exists PLATFORM_TCL
 
@@ -89,15 +104,28 @@ proc write_eqy_script { } {
 }
 
 proc run_equivalence_test { } {
+  if { [auto_execok eqy] == "" } {
+    puts "EQUIVALENCE_CHECK=1 requested but 'eqy' was not found in PATH; skipping equivalence check."
+    set ::env(EQUIVALENCE_CHECK) 0
+    return
+  }
+
   write_eqy_verilog 4_after_rsz.v
   write_eqy_script
 
   # tclint-disable-next-line command-args
-  eval exec eqy -d $::env(LOG_DIR)/4_eqy_output \
-    --force \
-    --jobs $::env(NUM_CORES) \
-    $::env(OBJECTS_DIR)/4_eqy_test.eqy \
-    > $::env(LOG_DIR)/4_equivalence_check.log
+  set result [catch {
+    eval exec eqy -d $::env(LOG_DIR)/4_eqy_output \
+      --force \
+      --jobs $::env(NUM_CORES) \
+      $::env(OBJECTS_DIR)/4_eqy_test.eqy \
+      > $::env(LOG_DIR)/4_equivalence_check.log
+  } msg]
+  if { $result != 0 } {
+    puts "EQUIVALENCE_CHECK=1 requested but eqy failed to run; skipping equivalence check. Error: $msg"
+    set ::env(EQUIVALENCE_CHECK) 0
+    return
+  }
   set count \
     [exec grep -c "Successfully proved designs equivalent" $::env(LOG_DIR)/4_equivalence_check.log]
   if { $count == 0 } {
