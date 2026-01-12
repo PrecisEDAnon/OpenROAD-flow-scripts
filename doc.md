@@ -28,7 +28,11 @@ Key knobs (ORFS-toggle-rebased-DFT):
 - `DFT_CHAIN_COUNT`: fixed number of scan chains (exact)
 - `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH`: max bits per chain (also used to infer chain count when `DFT_CHAIN_COUNT` is not set)
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
-- `DFT_DONT_TOUCH_SCAN_NETS`: marks SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn on scan-only nets
+- `DFT_DONT_TOUCH_SCAN_NETS`: marks most SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn (scan_enable tree is kept optimizable)
+- `DFT_BUFFER_SCAN_ENABLE`: buffers/splits `scan_enable_0` to control fanout and avoid GRT freezes (default `1`)
+  - `DFT_SCAN_ENABLE_MAX_FANOUT` (default `64`)
+  - `DFT_SCAN_ENABLE_BUFFER_CELL` (default = `MIN_BUF_CELL_AND_PORTS[0]`)
+  - `DFT_SCAN_ENABLE_BUFFER_LEVELS` (default `3`)
 
 Algorithm sketch:
 - Clustering/partitioning across chains: placement-aware reassignment (“swap/move”) under a per-chain max-length cap.

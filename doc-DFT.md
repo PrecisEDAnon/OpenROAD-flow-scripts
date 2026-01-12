@@ -117,7 +117,14 @@ Notes:
     - when enabled, re-places `scan_in_N`/`scan_out_N` near their chain endpoints
     - force-disable with `DFT_PLACE_SCAN_PORTS=0`
   - `DFT_PLACE_SCAN_ENABLE_PORT` (default = `DFT_PLACE_SCAN_PORTS`; also re-place `scan_enable_0`)
-  - `DFT_DONT_TOUCH_SCAN_NETS` (default `1`; marks SCAN nets `dont_touch` so `repair_design`/`repair_timing` won’t buffer/resize for scan-only nets)
+  - `DFT_DONT_TOUCH_SCAN_NETS` (default `1`; marks most SCAN nets `dont_touch` to avoid QoR-driven resizer churn on scan-only nets; scan_enable tree is kept optimizable)
+  - `DFT_BUFFER_SCAN_ENABLE` (default `1`; buffers/splits `scan_enable_0` to reduce fanout before routing)
+    - `DFT_SCAN_ENABLE_MAX_FANOUT` (default `64`)
+    - `DFT_SCAN_ENABLE_BUFFER_CELL` (default = `MIN_BUF_CELL_AND_PORTS[0]`)
+    - `DFT_SCAN_ENABLE_BUFFER_LEVELS` (default `3`)
+
+Routing robustness:
+- Even with `DFT_PLACE_SCAN_PORTS=0`, the pre-global-route hook ensures `scan_in_N`/`scan_out_N`/`scan_enable_0` have valid pin geometries (via `place_pin` on `IO_PLACER_H/V`) to avoid router errors like `GRT-0042`.
 
 ## Reproduction: Baseline vs Fixed DFT (QoR Proxy Comparison)
 
@@ -239,6 +246,9 @@ Chain count inference (`chain_count` / `max_length` / `max_chains`):
   - `ScanArchitect::inferChainCount()`
   - `ScanArchitect::inferChainCountFromMaxLength()`
   - `ScanArchitect::createScanChains()`
+
+Constraint sanity:
+- If the user’s `max_length` / `max_chains` / `chain_count` request is infeasible (e.g., not enough chains to hold all scan bits), OpenROAD emits warnings (`DFT-0073`, `DFT-0074`) and will relax `max_length` as needed to still build a plan.
 
 Partition + per-chain ordering:
 - `tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`
