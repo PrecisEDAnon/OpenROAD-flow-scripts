@@ -130,11 +130,13 @@ configuration file.
 | <a name="DFF_LIB_FILES"></a>DFF_LIB_FILES| Technology mapping liberty files for flip-flops.| |
 | <a name="DFF_MAP_FILE"></a>DFF_MAP_FILE| Optional mapping file supplied to Yosys to map D flip-flops| |
 | <a name="DIE_AREA"></a>DIE_AREA| The die area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
+| <a name="DISABLE_NG45_DEAD_LOGIC_REMOVAL"></a>DISABLE_NG45_DEAD_LOGIC_REMOVAL| Set to 1 to turn off resizer's dead-logic elimination on Nangate45 flows. The default keeps the cleanup enabled while still allowing opt-out for debugging sensitivity to the pass.| 0|
 | <a name="DONT_BUFFER_PORTS"></a>DONT_BUFFER_PORTS| Do not buffer input/output ports during floorplanning.| 0|
 | <a name="DONT_USE_CELLS"></a>DONT_USE_CELLS| Dont use cells eases pin access in detailed routing.| |
 | <a name="DPO_MAX_DISPLACEMENT"></a>DPO_MAX_DISPLACEMENT| Specifies how far an instance can be moved when optimizing.| 5 1|
 | <a name="EARLY_SIZING_CAP_RATIO"></a>EARLY_SIZING_CAP_RATIO| Ratio between the input pin capacitance and the output pin load during initial gate sizing.| |
 | <a name="ENABLE_DPO"></a>ENABLE_DPO| Enable detail placement with improve_placement feature.| 1|
+| <a name="ENABLE_OPTIMIZE_MIRRORING"></a>ENABLE_OPTIMIZE_MIRRORING| Enable DPL mirroring optimization (optimize_mirroring) during detailed placement.| 1|
 | <a name="EQUIVALENCE_CHECK"></a>EQUIVALENCE_CHECK| Enable running equivalence checks to verify logical correctness of repair_timing.| 0|
 | <a name="FASTROUTE_TCL"></a>FASTROUTE_TCL| Specifies a Tcl script with commands to run before FastRoute.| |
 | <a name="FILL_CELLS"></a>FILL_CELLS| Fill cells are used to fill empty sites. If not set or empty, fill cell insertion is skipped.| |
@@ -147,7 +149,7 @@ configuration file.
 | <a name="GDS_FILES"></a>GDS_FILES| Path to platform GDS files.| |
 | <a name="GENERATE_ARTIFACTS_ON_FAILURE"></a>GENERATE_ARTIFACTS_ON_FAILURE| For instance Bazel needs artifacts (.odb and .rpt files) on a failure to allow the user to save hours on re-running the failed step locally, but when working with a Makefile flow, it is more natural to fail the step and leave the user to manually inspect the logs and artifacts directly via the file system. Set to 1 to change the behavior to generate artifacts upon failure to e.g. do a global route. The exit code will still be non-zero on all other failures that aren't covered by the "useful to inspect the artifacts on failure" use-case. Example: just like detailed routing, a global route that fails with congestion, is not a build failure(as in exit code non-zero), it is a successful(as in zero exit code) global route that produce reports detailing the problem. Detailed route will not proceed, if there is global routing congestion This allows build systems, such as bazel, to create artifacts for global and detailed route, even if the operation had problems, without having know about the semantics between global and detailed route. Considering that global and detailed route can run for a long time and use a lot of memory, this allows inspecting results on a laptop for a build that ran on a server.| 0|
 | <a name="GLOBAL_PLACEMENT_ARGS"></a>GLOBAL_PLACEMENT_ARGS| Use additional tuning parameters during global placement other than default args defined in global_place.tcl.| |
-| <a name="GLOBAL_ROUTE_ARGS"></a>GLOBAL_ROUTE_ARGS| Replaces default arguments for global route.| -congestion_iterations 30 -congestion_report_iter_step 5 -verbose|
+| <a name="GLOBAL_ROUTE_ARGS"></a>GLOBAL_ROUTE_ARGS| Additional arguments for FastRoute. When ORFS_ENABLE_NEW_OPENROAD=1, these are appended to the default arguments; otherwise, they replace the defaults.| |
 | <a name="GND_NETS_VOLTAGES"></a>GND_NETS_VOLTAGES| Used for IR Drop calculation.| |
 | <a name="GPL_ROUTABILITY_DRIVEN"></a>GPL_ROUTABILITY_DRIVEN| Specifies whether the placer should use routability driven placement.| 1|
 | <a name="GPL_TIMING_DRIVEN"></a>GPL_TIMING_DRIVEN| Specifies whether the placer should use timing driven placement.| 1|
@@ -176,11 +178,14 @@ configuration file.
 | <a name="MAX_REPAIR_ANTENNAS_ITER_GRT"></a>MAX_REPAIR_ANTENNAS_ITER_GRT| Defines the maximum number of iterations post global routing repair antennas will run.| 5|
 | <a name="MAX_REPAIR_TIMING_ITER"></a>MAX_REPAIR_TIMING_ITER| Maximum number of iterations for repair setup and repair hold.| |
 | <a name="MAX_ROUTING_LAYER"></a>MAX_ROUTING_LAYER| The highest metal layer name to be used in routing.| |
+| <a name="MAX_UNGROUP_SIZE"></a>MAX_UNGROUP_SIZE| Area threshold, expressed in NAND2 gate equivalents, used to preserve modules during hierarchical synthesis. When set, this value also seeds SYNTH_MINIMUM_KEEP_SIZE so large blocks are not unintentionally flattened.| |
 | <a name="MIN_BUF_CELL_AND_PORTS"></a>MIN_BUF_CELL_AND_PORTS| Used to insert a buffer cell to pass through wires. Used in synthesis.| |
 | <a name="MIN_PLACE_STEP_COEF"></a>MIN_PLACE_STEP_COEF| Sets the minimum phi coefficient (pcof_min / µ_k Lower Bound) for global placement optimization. This parameter controls the step size lower bound in the RePlAce Nesterov optimization algorithm. Lower values may improve convergence but can increase runtime. Valid range: 0.95-1.05| 0.95|
 | <a name="MIN_ROUTING_LAYER"></a>MIN_ROUTING_LAYER| The lowest metal layer name to be used in routing.| |
+| <a name="NG45_USE_DETAILED_PARA"></a>NG45_USE_DETAILED_PARA| Selects the parasitics source passed to OpenROAD when running post-route timing repair on routed Nangate45 designs under ORFS_ENABLE_NEW_OPENROAD: 0 => global_routing parasitics, 1 => detailed_routing parasitics.| |
 | <a name="NUM_CORES"></a>NUM_CORES| Passed to `openroad -threads $(NUM_CORES)`, defaults to numbers of cores in system as determined by system specific code in Makefile, `nproc` is tried first. OpenROAD does not limit itself to this number of cores across OpenROAD running instances, which can lead to overprovisioning in contexts such as bazel-orfs where there could be many routing, or place jobs running at the same time.| |
 | <a name="OPENROAD_HIERARCHICAL"></a>OPENROAD_HIERARCHICAL| Feature toggle to enable to run OpenROAD in hierarchical mode, otherwise considered flat. Will eventually be the default and this option will be retired.| 0|
+| <a name="ORFS_ENABLE_NEW_OPENROAD"></a>ORFS_ENABLE_NEW_OPENROAD| When set (1/true/yes/on), the flow passes additional opt-in flags to OpenROAD to enable experimental behavior (GPL timing-driven net weights, RSZ equivalent-cell filtering fallback, etc.). When unset/0 (default), the flow uses the baseline OpenROAD invocation.| 0|
 | <a name="PDN_TCL"></a>PDN_TCL| File path which has a set of power grid policies used by pdn to be applied to the design, such as layers to use, stripe width and spacing to generate the actual metal straps.| |
 | <a name="PLACE_DENSITY"></a>PLACE_DENSITY| The desired average placement density of cells: 1.0 = dense, 0.0 = widely spread. The intended effort is also communicated by this parameter. Use a low value for faster builds and higher value for better quality of results. If a too low value is used, the placer will not be able to place all cells and a recommended minimum placement density can be found in the logs. A too high value can lead to excessive runtimes, even timeouts and subtle failures in the flow after placement, such as in CTS or global routing when timing repair fails. The default is platform specific.| |
 | <a name="PLACE_DENSITY_LB_ADDON"></a>PLACE_DENSITY_LB_ADDON| Check the lower boundary of the PLACE_DENSITY and add PLACE_DENSITY_LB_ADDON if it exists.| |
@@ -224,7 +229,7 @@ configuration file.
 | <a name="SDC_GUT"></a>SDC_GUT| Load design and remove all internal logic before doing synthesis. This is useful when creating a mock .lef abstract that has a smaller area than the amount of logic would allow. bazel-orfs uses this to mock SRAMs, for instance.| |
 | <a name="SEAL_GDS"></a>SEAL_GDS| Seal macro to place around the design.| |
 | <a name="SETUP_REPAIR_SEQUENCE"></a>SETUP_REPAIR_SEQUENCE| Specifies the sequence of moves to do in repair_timing -setup. This should be a string of move keywords separated by commas such as the default when not used: "unbuffer,sizedown,sizeup,swap,buffer,clone,split".| |
-| <a name="SETUP_SLACK_MARGIN"></a>SETUP_SLACK_MARGIN| Specifies a time margin for the slack when fixing setup violations. This option allows you to overfix or underfix(negative value, terminate retiming before 0 or positive slack). See HOLD_SLACK_MARGIN for more details.| 0|
+| <a name="SETUP_SLACK_MARGIN"></a>SETUP_SLACK_MARGIN| Specifies a time margin for the slack when fixing setup violations. This option allows you to overfix or underfix(negative value, terminate retiming before 0 or positive slack). See HOLD_SLACK_MARGIN for more details.| |
 | <a name="SET_RC_TCL"></a>SET_RC_TCL| Metal & Via RC definition file path.| |
 | <a name="SKIP_ANTENNA_REPAIR"></a>SKIP_ANTENNA_REPAIR| Skips antenna repair entirely.| 0|
 | <a name="SKIP_ANTENNA_REPAIR_POST_DRT"></a>SKIP_ANTENNA_REPAIR_POST_DRT| Skips antenna repair post-detailed routing.| 0|
@@ -284,7 +289,9 @@ configuration file.
 - [CLKGATE_MAP_FILE](#CLKGATE_MAP_FILE)
 - [DFF_MAP_FILE](#DFF_MAP_FILE)
 - [LATCH_MAP_FILE](#LATCH_MAP_FILE)
+- [MAX_UNGROUP_SIZE](#MAX_UNGROUP_SIZE)
 - [MIN_BUF_CELL_AND_PORTS](#MIN_BUF_CELL_AND_PORTS)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [SDC_FILE](#SDC_FILE)
 - [SDC_GUT](#SDC_GUT)
 - [SYNTH_ARGS](#SYNTH_ARGS)
@@ -321,6 +328,7 @@ configuration file.
 - [CORE_MARGIN](#CORE_MARGIN)
 - [CORE_UTILIZATION](#CORE_UTILIZATION)
 - [DIE_AREA](#DIE_AREA)
+- [DISABLE_NG45_DEAD_LOGIC_REMOVAL](#DISABLE_NG45_DEAD_LOGIC_REMOVAL)
 - [FLOORPLAN_DEF](#FLOORPLAN_DEF)
 - [FOOTPRINT](#FOOTPRINT)
 - [FOOTPRINT_TCL](#FOOTPRINT_TCL)
@@ -337,6 +345,7 @@ configuration file.
 - [MAX_REPAIR_TIMING_ITER](#MAX_REPAIR_TIMING_ITER)
 - [MAX_ROUTING_LAYER](#MAX_ROUTING_LAYER)
 - [MIN_ROUTING_LAYER](#MIN_ROUTING_LAYER)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [PDN_TCL](#PDN_TCL)
 - [PLACE_DENSITY](#PLACE_DENSITY)
 - [PLACE_DENSITY_LB_ADDON](#PLACE_DENSITY_LB_ADDON)
@@ -382,6 +391,7 @@ configuration file.
 - [CELL_PAD_IN_SITES_DETAIL_PLACEMENT](#CELL_PAD_IN_SITES_DETAIL_PLACEMENT)
 - [CELL_PAD_IN_SITES_GLOBAL_PLACEMENT](#CELL_PAD_IN_SITES_GLOBAL_PLACEMENT)
 - [CLUSTER_FLOPS](#CLUSTER_FLOPS)
+- [DISABLE_NG45_DEAD_LOGIC_REMOVAL](#DISABLE_NG45_DEAD_LOGIC_REMOVAL)
 - [DONT_BUFFER_PORTS](#DONT_BUFFER_PORTS)
 - [EARLY_SIZING_CAP_RATIO](#EARLY_SIZING_CAP_RATIO)
 - [FLOORPLAN_DEF](#FLOORPLAN_DEF)
@@ -396,6 +406,8 @@ configuration file.
 - [MAX_ROUTING_LAYER](#MAX_ROUTING_LAYER)
 - [MIN_PLACE_STEP_COEF](#MIN_PLACE_STEP_COEF)
 - [MIN_ROUTING_LAYER](#MIN_ROUTING_LAYER)
+- [NG45_USE_DETAILED_PARA](#NG45_USE_DETAILED_PARA)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [PLACE_DENSITY](#PLACE_DENSITY)
 - [PLACE_DENSITY_LB_ADDON](#PLACE_DENSITY_LB_ADDON)
 - [PLACE_PINS_ARGS](#PLACE_PINS_ARGS)
@@ -415,10 +427,13 @@ configuration file.
 - [CTS_SNAPSHOT](#CTS_SNAPSHOT)
 - [CTS_SNAPSHOTS](#CTS_SNAPSHOTS)
 - [DETAILED_METRICS](#DETAILED_METRICS)
+- [DISABLE_NG45_DEAD_LOGIC_REMOVAL](#DISABLE_NG45_DEAD_LOGIC_REMOVAL)
 - [EQUIVALENCE_CHECK](#EQUIVALENCE_CHECK)
 - [HOLD_SLACK_MARGIN](#HOLD_SLACK_MARGIN)
 - [MATCH_CELL_FOOTPRINT](#MATCH_CELL_FOOTPRINT)
 - [MAX_REPAIR_TIMING_ITER](#MAX_REPAIR_TIMING_ITER)
+- [NG45_USE_DETAILED_PARA](#NG45_USE_DETAILED_PARA)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [POST_CTS_TCL](#POST_CTS_TCL)
 - [REMOVE_CELLS_FOR_EQY](#REMOVE_CELLS_FOR_EQY)
 - [REPORT_CLOCK_SKEW](#REPORT_CLOCK_SKEW)
@@ -443,6 +458,8 @@ configuration file.
 - [MAX_REPAIR_TIMING_ITER](#MAX_REPAIR_TIMING_ITER)
 - [MAX_ROUTING_LAYER](#MAX_ROUTING_LAYER)
 - [MIN_ROUTING_LAYER](#MIN_ROUTING_LAYER)
+- [NG45_USE_DETAILED_PARA](#NG45_USE_DETAILED_PARA)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [PRE_GLOBAL_ROUTE_TCL](#PRE_GLOBAL_ROUTE_TCL)
 - [REPORT_CLOCK_SKEW](#REPORT_CLOCK_SKEW)
 - [ROUTING_LAYER_ADJUSTMENT](#ROUTING_LAYER_ADJUSTMENT)
@@ -468,6 +485,8 @@ configuration file.
 - [MAX_REPAIR_ANTENNAS_ITER_DRT](#MAX_REPAIR_ANTENNAS_ITER_DRT)
 - [MAX_ROUTING_LAYER](#MAX_ROUTING_LAYER)
 - [MIN_ROUTING_LAYER](#MIN_ROUTING_LAYER)
+- [NG45_USE_DETAILED_PARA](#NG45_USE_DETAILED_PARA)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [REPORT_CLOCK_SKEW](#REPORT_CLOCK_SKEW)
 - [ROUTING_LAYER_ADJUSTMENT](#ROUTING_LAYER_ADJUSTMENT)
 - [SKIP_ANTENNA_REPAIR_POST_DRT](#SKIP_ANTENNA_REPAIR_POST_DRT)
@@ -481,6 +500,7 @@ configuration file.
 - [GND_NETS_VOLTAGES](#GND_NETS_VOLTAGES)
 - [MAX_ROUTING_LAYER](#MAX_ROUTING_LAYER)
 - [MIN_ROUTING_LAYER](#MIN_ROUTING_LAYER)
+- [ORFS_ENABLE_NEW_OPENROAD](#ORFS_ENABLE_NEW_OPENROAD)
 - [PWR_NETS_VOLTAGES](#PWR_NETS_VOLTAGES)
 - [REPORT_CLOCK_SKEW](#REPORT_CLOCK_SKEW)
 - [ROUTING_LAYER_ADJUSTMENT](#ROUTING_LAYER_ADJUSTMENT)
@@ -519,6 +539,7 @@ configuration file.
 - [DONT_USE_CELLS](#DONT_USE_CELLS)
 - [DPO_MAX_DISPLACEMENT](#DPO_MAX_DISPLACEMENT)
 - [ENABLE_DPO](#ENABLE_DPO)
+- [ENABLE_OPTIMIZE_MIRRORING](#ENABLE_OPTIMIZE_MIRRORING)
 - [FASTROUTE_TCL](#FASTROUTE_TCL)
 - [FILL_CONFIG](#FILL_CONFIG)
 - [FLOW_VARIANT](#FLOW_VARIANT)

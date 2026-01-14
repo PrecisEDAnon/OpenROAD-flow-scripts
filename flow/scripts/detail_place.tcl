@@ -23,7 +23,9 @@ proc do_dpl { } {
       improve_placement
     }
   }
-  optimize_mirroring
+  if { $::env(ENABLE_OPTIMIZE_MIRRORING) } {
+    optimize_mirroring
+  }
 
   utl::info FLW 12 "Placement violations [check_placement -verbose]."
 

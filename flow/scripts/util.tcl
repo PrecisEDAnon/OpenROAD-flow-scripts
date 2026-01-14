@@ -36,6 +36,24 @@ proc repair_timing_helper { args } {
   append_env_var additional_args SKIP_VT_SWAP -skip_vt_swap 0
   append_env_var additional_args SKIP_CRIT_VT_SWAP -skip_crit_vt_swap 0
   append_env_var additional_args MATCH_CELL_FOOTPRINT -match_cell_footprint 0
+
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    if { [lsearch -exact $args "-equiv_filter_fallback"] == -1 } {
+      lappend additional_args -equiv_filter_fallback
+    }
+    if { [lsearch -exact $args "-setup_tns_checkpoint"] == -1 } {
+      lappend additional_args -setup_tns_checkpoint
+    }
+    if { [lsearch -exact $args "-routed_parasitics_src"] == -1
+         && [info exists ::env(PLATFORM)]
+         && $::env(PLATFORM) eq "nangate45"
+         && [env_var_exists_and_non_empty NG45_USE_DETAILED_PARA] } {
+      set parasitics_src [expr {
+        [env_var_truthy NG45_USE_DETAILED_PARA] ? "detailed_routing" : "global_routing"
+      }]
+      lappend additional_args -routed_parasitics_src $parasitics_src
+    }
+  }
   lappend additional_args {*}$args -verbose
 
   log_cmd repair_timing {*}$additional_args
@@ -48,6 +66,9 @@ proc repair_design_helper { } {
   append_env_var additional_args CAP_MARGIN -cap_margin 1
   append_env_var additional_args SLEW_MARGIN -slew_margin 1
   append_env_var additional_args MATCH_CELL_FOOTPRINT -match_cell_footprint 0
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    append additional_args " -equiv_filter_fallback"
+  }
   log_cmd repair_design {*}$additional_args
 }
 
@@ -63,6 +84,9 @@ proc recover_power_helper { } {
   set additional_args "-verbose"
   append_env_var additional_args RECOVER_POWER -recover_power 1
   append_env_var additional_args MATCH_CELL_FOOTPRINT -match_cell_footprint 0
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    append additional_args " -equiv_filter_fallback"
+  }
   log_cmd repair_timing {*}$additional_args
   report_tns
   report_wns

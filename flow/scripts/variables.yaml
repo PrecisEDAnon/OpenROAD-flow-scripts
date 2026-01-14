@@ -24,9 +24,10 @@ GENERATE_ARTIFACTS_ON_FAILURE:
   default: 0
 ORFS_ENABLE_NEW_OPENROAD:
   description: >
-    When set (1/true/yes/on), enables the experimental OpenROAD/flow behavior
-    on this branch. When unset/0 (default), the flow aims to match vanilla ORFS
-    (93c42b2) + vanilla OpenROAD (7bc521) behavior.
+    When set (1/true/yes/on), the flow passes additional opt-in flags to
+    OpenROAD to enable experimental behavior (GPL timing-driven net weights,
+    RSZ equivalent-cell filtering fallback, etc.). When unset/0 (default), the
+    flow uses the baseline OpenROAD invocation.
   stages:
     - synth
     - floorplan
@@ -591,6 +592,10 @@ ENABLE_DPO:
   description: |
     Enable detail placement with improve_placement feature.
   default: 1
+ENABLE_OPTIMIZE_MIRRORING:
+  description: |
+    Enable DPL mirroring optimization (optimize_mirroring) during detailed placement.
+  default: 1
 DPO_MAX_DISPLACEMENT:
   description: |
     Specifies how far an instance can be moved when optimizing.
@@ -1049,8 +1054,8 @@ PRE_GLOBAL_ROUTE_TCL:
     - grt
 GLOBAL_ROUTE_ARGS:
   description: >
-    Extra arguments appended to the default FastRoute invocation.
-    Defaults include -congestion_iterations 30 -congestion_report_iter_step 5 -verbose.
+    Additional arguments for FastRoute. When ORFS_ENABLE_NEW_OPENROAD=1, these
+    are appended to the default arguments; otherwise, they replace the defaults.
   stages:
     - grt
   default: ""
@@ -1076,10 +1081,10 @@ MATCH_CELL_FOOTPRINT:
   default: 0
 NG45_USE_DETAILED_PARA:
   description: >
-    Controls which parasitics source resizer should use post-route on
-    Nangate45 designs. The default of 0 keeps the global-route RC model so the
-    timing view aligns with the October toolchain; set to 1 to keep the newer
-    detailed-routing parasitics.
+    Selects the parasitics source passed to OpenROAD when running
+    post-route timing repair on routed Nangate45 designs under
+    ORFS_ENABLE_NEW_OPENROAD: 0 => global_routing parasitics, 1 =>
+    detailed_routing parasitics.
   stages:
     - place
     - cts
