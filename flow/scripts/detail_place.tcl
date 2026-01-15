@@ -18,11 +18,26 @@ proc do_dpl { } {
 
   if { $::env(ENABLE_DPO) } {
     set dpo_args {}
-    if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    set enable_extra_dpl [env_var_truthy ORFS_ENABLE_NEW_OPENROAD]
+    if { $enable_extra_dpl } {
       lappend dpo_args -enable_extra_dpl 1
     }
+
+    set max_displacement ""
     if { [env_var_exists_and_non_empty DPO_MAX_DISPLACEMENT] } {
-      improve_placement -max_displacement $::env(DPO_MAX_DISPLACEMENT) {*}$dpo_args
+      set max_displacement $::env(DPO_MAX_DISPLACEMENT)
+      if { $enable_extra_dpl } {
+        set trimmed [string trim $max_displacement]
+        # The default displacement is tuned for legacy DPO; use a smaller
+        # default for the extra-DPL path unless explicitly overridden.
+        if { $trimmed eq "5 1" || $trimmed eq "5" } {
+          set max_displacement 1
+        }
+      }
+    }
+
+    if { $max_displacement ne "" } {
+      improve_placement -max_displacement $max_displacement {*}$dpo_args
     } else {
       improve_placement {*}$dpo_args
     }
