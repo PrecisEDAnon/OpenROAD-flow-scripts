@@ -107,6 +107,16 @@ proc env_var_exists_and_non_empty { env_var } {
   return [expr { [info exists ::env($env_var)] && ![string equal $::env($env_var) ""] }]
 }
 
+proc env_var_truthy { env_var } {
+  if { [env_var_exists_and_non_empty $env_var] } {
+    set value [string tolower [string trim $::env($env_var)]]
+    if { [lsearch -exact {1 true yes on} $value] != -1 } {
+      return 1
+    }
+  }
+  return 0
+}
+
 proc append_env_var { list_name var_name prefix has_arg } {
   upvar $list_name list
   if {

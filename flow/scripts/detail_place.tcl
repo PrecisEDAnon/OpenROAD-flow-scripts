@@ -17,10 +17,14 @@ proc do_dpl { } {
   detailed_placement
 
   if { $::env(ENABLE_DPO) } {
+    set dpo_args {}
+    if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+      lappend dpo_args -enable_extra_dpl 1
+    }
     if { [env_var_exists_and_non_empty DPO_MAX_DISPLACEMENT] } {
-      improve_placement -max_displacement $::env(DPO_MAX_DISPLACEMENT)
+      improve_placement -max_displacement $::env(DPO_MAX_DISPLACEMENT) {*}$dpo_args
     } else {
-      improve_placement
+      improve_placement {*}$dpo_args
     }
   }
   optimize_mirroring
