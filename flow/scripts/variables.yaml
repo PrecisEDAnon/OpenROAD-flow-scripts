@@ -569,6 +569,13 @@ ENABLE_DPO:
   description: |
     Enable detail placement with improve_placement feature.
   default: 1
+ENABLE_EXTRA_DPL:
+  description: |
+    Enable the extra detailed placement path in improve_placement.
+    Only used when ENABLE_DPO=1 (ignored otherwise).
+  stages:
+    - place
+  default: 0
 DPO_MAX_DISPLACEMENT:
   description: |
     Specifies how far an instance can be moved when optimizing.

@@ -18,7 +18,7 @@ proc do_dpl { } {
 
   if { $::env(ENABLE_DPO) } {
     set dpo_args {}
-    set enable_extra_dpl [env_var_truthy ORFS_ENABLE_NEW_OPENROAD]
+    set enable_extra_dpl [env_var_truthy ENABLE_EXTRA_DPL]
     if { $enable_extra_dpl } {
       lappend dpo_args -enable_extra_dpl 1
     }
