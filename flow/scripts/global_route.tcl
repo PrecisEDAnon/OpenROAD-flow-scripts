@@ -67,11 +67,15 @@ proc global_route_helper { } {
     log_cmd global_route -end_incremental {*}$res_aware \
       -congestion_report_file $::env(REPORTS_DIR)/congestion_post_repair_design.rpt
 
-    # Repair timing using global route parasitics
-    puts "Repair setup and hold violations..."
-    log_cmd estimate_parasitics -global_routing
-
-    repair_timing_helper
+		    # Repair timing using global route parasitics
+		    puts "Repair setup and hold violations..."
+		    log_cmd estimate_parasitics -global_routing
+		
+		    if { [env_var_truthy ENABLE_EXTRA_DPL] && [info exists ::env(ENABLE_DPO)] && $::env(ENABLE_DPO) } {
+		      repair_timing_helper -setup_margin 0.01
+		    } else {
+		      repair_timing_helper
+		    }
 
     if { $::env(DETAILED_METRICS) } {
       report_metrics 5 "global route post repair timing"
@@ -90,12 +94,33 @@ proc global_route_helper { } {
   log_cmd global_route -start_incremental
   recover_power_helper
   # Route the modified nets by rsz journal restore
-  log_cmd global_route -end_incremental {*}$res_aware \
-    -congestion_report_file $::env(REPORTS_DIR)/congestion_post_recover_power.rpt
+	  log_cmd global_route -end_incremental {*}$res_aware \
+	    -congestion_report_file $::env(REPORTS_DIR)/congestion_post_recover_power.rpt
 
-  if {
-    !$::env(SKIP_ANTENNA_REPAIR) &&
-    [env_var_exists_and_non_empty MAX_REPAIR_ANTENNAS_ITER_GRT]
+			  # Extra-DPL opt-in can be more disruptive to timing after routing; give it a
+			  # final timing repair pass before reporting the global route metrics.
+		  if { [env_var_truthy ENABLE_EXTRA_DPL] && [info exists ::env(ENABLE_DPO)] && $::env(ENABLE_DPO) } {
+		    puts "Extra DPL: final repair setup and hold violations..."
+		    log_cmd estimate_parasitics -global_routing
+		
+		    # Prefer sizing-based fixes on tight-wirelength platforms (e.g. Nangate45)
+		    # to avoid excessive buffer insertion late in the flow.
+		    if { [info exists ::env(PLATFORM)] && $::env(PLATFORM) eq "nangate45" } {
+		      repair_timing_helper -setup_margin 0.01 -sequence sizeup,swap
+		    } else {
+		      repair_timing_helper -setup_margin 0.01
+		    }
+		
+		    # Legalize placement after timing repair and route modified nets.
+		    log_cmd global_route -start_incremental
+		    log_cmd detailed_placement
+	    log_cmd global_route -end_incremental {*}$res_aware \
+	      -congestion_report_file $::env(REPORTS_DIR)/congestion_post_extra_repair_timing.rpt
+	  }
+	
+	  if {
+	    !$::env(SKIP_ANTENNA_REPAIR) &&
+	    [env_var_exists_and_non_empty MAX_REPAIR_ANTENNAS_ITER_GRT]
   } {
     puts "Repair antennas..."
     repair_antennas -iterations $::env(MAX_REPAIR_ANTENNAS_ITER_GRT)

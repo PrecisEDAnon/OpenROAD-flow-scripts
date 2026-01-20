@@ -61,7 +61,15 @@ if { !$::env(SKIP_CTS_REPAIR_TIMING) } {
     write_eqy_verilog 4_before_rsz.v
   }
 
-  repair_timing_helper
+  set extra_dpl_enabled [expr { [env_var_truthy ENABLE_EXTRA_DPL] && [info exists ::env(ENABLE_DPO)] && $::env(ENABLE_DPO) }]
+  if { $extra_dpl_enabled } {
+    repair_timing_helper -setup_margin 0.01
+    if { !$::env(EQUIVALENCE_CHECK) && [info exists ::env(PLATFORM)] && [string match "sky130*" $::env(PLATFORM)] } {
+      repair_timing_helper -setup_margin 0.01
+    }
+  } else {
+    repair_timing_helper
+  }
 
   if { $::env(EQUIVALENCE_CHECK) } {
     run_equivalence_test

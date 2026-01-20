@@ -28,10 +28,19 @@ proc do_dpl { } {
       set max_displacement $::env(DPO_MAX_DISPLACEMENT)
       if { $enable_extra_dpl } {
         set trimmed [string trim $max_displacement]
-        # The default displacement is tuned for legacy DPO; use a smaller
-        # default for the extra-DPL path unless explicitly overridden.
         if { $trimmed eq "5 1" || $trimmed eq "5" } {
-          set max_displacement 1
+          # Keep extra-DPL more localized on larger designs to reduce timing
+          # disruption. Small designs (e.g. gcd) are sensitive to overly-tight
+          # displacement constraints.
+          set db [ord::get_db]
+          set block [[$db getChip] getBlock]
+          set inst_count 0
+          foreach inst [$block getInsts] {
+            incr inst_count
+          }
+          if { $inst_count >= 2000 } {
+            set max_displacement 1
+          }
         }
       }
     }

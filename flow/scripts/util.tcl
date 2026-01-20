@@ -15,7 +15,10 @@ proc log_cmd { cmd args } {
 
 proc repair_timing_helper { args } {
   set additional_args {}
-  append_env_var additional_args SETUP_SLACK_MARGIN -setup_margin 1
+  # Allow explicit -setup_margin overrides from call sites.
+  if { [lsearch -exact $args "-setup_margin"] == -1 } {
+    append_env_var additional_args SETUP_SLACK_MARGIN -setup_margin 1
+  }
   append_env_var additional_args HOLD_SLACK_MARGIN -hold_margin 1
   append_env_var additional_args SETUP_MOVE_SEQUENCE -sequence 1
   append_env_var additional_args TNS_END_PERCENT -repair_tns 1

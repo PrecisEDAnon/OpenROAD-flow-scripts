@@ -575,6 +575,8 @@ ENABLE_EXTRA_DPL:
     Only used when ENABLE_DPO=1 (ignored otherwise).
   stages:
     - place
+    - cts
+    - grt
   default: 0
 DPO_MAX_DISPLACEMENT:
   description: |
