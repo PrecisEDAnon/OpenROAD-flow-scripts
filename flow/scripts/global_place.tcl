@@ -29,6 +29,13 @@ append_env_var global_placement_args GPL_ROUTABILITY_DRIVEN -routability_driven 
 if { $::env(GPL_TIMING_DRIVEN) } {
   lappend global_placement_args {-timing_driven}
   if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    # OpenROAD's new timing-driven net-weight mapping defaults to using 0-slack
+    # as the reference point (only negative-slack nets get weighted). This can
+    # be a large QoR regression for some designs, so default to the legacy
+    # slack-based reference unless explicitly overridden.
+    if { ![env_var_exists_and_non_empty GPL_WEIGHT_USE_ZERO_REF] } {
+      set ::env(GPL_WEIGHT_USE_ZERO_REF) 0
+    }
     lappend global_placement_args {-timing_driven_use_new_net_weights}
     set gpl_keep_overflow ""
     if { [env_var_exists_and_non_empty GPL_KEEP_OVERFLOW] } {

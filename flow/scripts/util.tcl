@@ -20,7 +20,7 @@ proc repair_timing_helper { args } {
       lappend additional_args -setup_margin $::env(SETUP_SLACK_MARGIN)
     } else {
       if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
-        lappend additional_args -setup_margin 0.02
+        lappend additional_args -setup_margin 0
       } else {
         lappend additional_args -setup_margin 0
       }
@@ -40,9 +40,6 @@ proc repair_timing_helper { args } {
   if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
     if { [lsearch -exact $args "-equiv_filter_fallback"] == -1 } {
       lappend additional_args -equiv_filter_fallback
-    }
-    if { [lsearch -exact $args "-setup_tns_checkpoint"] == -1 } {
-      lappend additional_args -setup_tns_checkpoint
     }
     if { [lsearch -exact $args "-routed_parasitics_src"] == -1
          && [info exists ::env(PLATFORM)]
