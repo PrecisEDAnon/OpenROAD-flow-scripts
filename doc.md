@@ -11,24 +11,26 @@ Docs:
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
-  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) (baseline)
-  - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) (active)
+  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) (review-ready)
+  - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) (development)
 - OpenROAD-flow-scripts:
-  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (baseline)
-  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (active)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (review-ready)
+  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (development)
 
 Note:
-- `ORFS-clean-DFT` is meant as a baseline snapshot; the knob list below reflects the active `ORFS-toggle-rebased-DFT` branch.
+- This branch (`ORFS-clean-DFT`) is the reviewer-facing snapshot; the knob list below applies here.
 
 How to run (ORFS):
-- `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl` (runs `scan_replace`, creates scan ports)
-- `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl` (optional scan port placement + runs `execute_dft_plan`)
+- Recommended: `DFT_ENABLE=1` (auto-wires the hook scripts).
+- Routing-aware ordering: `DFT_ENABLE=1 DFT_ROUTE_AWARE=1` (trial GRT → stitch + incremental route).
 
-Key knobs (ORFS-toggle-rebased-DFT):
+Key knobs:
 - `DFT_CHAIN_COUNT`: fixed number of scan chains (exact)
 - `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH`: max bits per chain (also used to infer chain count when `DFT_CHAIN_COUNT` is not set)
+- `DFT_SCAN_ORDER_METRIC`: `PLACEMENT` (default) or `PIN_TO_NET` (routing-aware)
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
 - `DFT_DONT_TOUCH_SCAN_NETS`: marks SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn on scan-only nets
+- `DFT_SCAN_ENABLE_DISABLED_VALUE`: functional-mode value for scan enable (set to `1` for active-low scan enable)
 
 Algorithm sketch:
 - Clustering/partitioning across chains: placement-aware reassignment (“swap/move”) under a per-chain max-length cap.

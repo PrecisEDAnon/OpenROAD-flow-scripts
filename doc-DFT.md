@@ -2,91 +2,74 @@
 
 Quickstart: `doc-DFT-howto.md`
 
-This repo wires OpenROAD’s DFT scan insertion into the ORFS flow via **opt-in** hook scripts, plus utilities to measure scan-chain wirelength and validate scan stitching.
+This branch wires OpenROAD’s DFT scan insertion into the ORFS flow (opt-in hook scripts, or `DFT_ENABLE=1`), plus:
+
+- scan stitching validation (`flow/util/scan_chain_validate.py`)
+- scan-only routed wirelength reporting (`flow/scripts/dft_scan_wirelength.tcl`)
+- scan-chain visualization (`flow/util/scan_chain_plot.py`)
+- scan-order cost proxy (`flow/util/scan_chain_cost.py`)
 
 ## Required OpenROAD
 
-This branch pins the `tools/OpenROAD` submodule to **OpenROAD-clean-DFT**:
+`tools/OpenROAD` is pinned to `https://github.com/PrecisEDAnon/OpenROAD` (`OpenROAD-clean-DFT`) at:
 
-- Base: `7bc521f36a`
-- +1 commit (DFT fixes): `661abebbc3c70c59b4a3991acd176a5cc785f0d4`
+- `b60cadb4dc3eeaeda4e3a5b6c0f4aeb7e11f82aa`
 
-The key point: it works with **vanilla OpenSTA** (no OpenSTA parser patch required).
+Key DFT-facing additions in that branch:
 
-## ORFS Flow Integration (Where DFT Happens)
+- Works with vanilla OpenSTA (fallback scan-pin inference by common names).
+- Adds `set_dft_config -chain_count` and `-scan_order_metric {PLACEMENT|PIN_TO_NET}`.
+- Fixes scan stitching correctness regressions.
 
-Two hook scripts are provided:
+## ORFS Flow Integration
 
-- `flow/scripts/dft_scan_post_floorplan.tcl`
-  - Intended use: `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl`
-  - Runs after floorplan, before saving `2_1_floorplan.odb`:
-    - `set_dft_config -max_chains 1 -clock_mixing clock_mix`
-    - `scan_replace` (functional flops → scan flops)
-    - creates scan ports: `scan_enable_0`, `scan_in_0`, `scan_out_0`
-    - `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode timing)
+The flow already has generic hook points; DFT uses them:
 
-- `flow/scripts/dft_scan_pre_global_route.tcl`
-  - Intended use: `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl`
-  - Runs after CTS, before global routing:
-    - `set_dft_config ...` (must match the post-floorplan config)
-    - `set_case_analysis 0 [get_ports scan_enable_0]`
-    - `execute_dft_plan` (stitches the scan chain using placement)
+- `flow/scripts/dft_scan_post_floorplan.tcl` (`POST_FLOORPLAN_TCL=...`)
+  - `set_dft_config ...` (supports `DFT_CHAIN_COUNT`, `DFT_MAX_CHAIN_LENGTH`, name patterns, order metric)
+  - `scan_replace`
+  - ensures scan ports exist (ports or instance/pin endpoints)
+  - sets functional-mode case analysis (`DFT_SCAN_ENABLE_DISABLED_VALUE`, default `0`)
 
-Notes:
-- The scripts currently hardcode `-max_chains 1` to keep scan I/O stable for comparisons.
-- `set_case_analysis 0` ensures STA uses functional-mode arcs for scan flops.
+- `flow/scripts/dft_scan_pre_global_route.tcl` (`PRE_GLOBAL_ROUTE_TCL=...`)
+  - applies the same DFT config
+  - optionally places scan ports near chain endpoints (`DFT_PLACE_SCAN_PORTS`)
+  - stitches scan chains (`execute_dft_plan`) unless `DFT_DEFER_STITCH=1`
+  - optional QoR hygiene:
+    - buffer/split scan_enable (`DFT_BUFFER_SCAN_ENABLE=1` by default)
+    - mark most SCAN nets `dont_touch` (`DFT_DONT_TOUCH_SCAN_NETS=1` by default)
 
-## OpenROAD-side Fixes (Summary)
+- `flow/scripts/dft_scan_post_global_route.tcl` (`POST_GLOBAL_ROUTE_TCL=...`, optional)
+  - runs after the initial global route, before repair
+  - intended for routing-aware ordering (`DFT_SCAN_ORDER_METRIC=PIN_TO_NET`):
+    - stitch scan chains after trial routing
+    - incrementally global-route only the modified nets so `route.guide` includes scan nets
 
-The OpenROAD-clean-DFT commit includes the minimum required fixes to make DFT “alive” on top of `7bc521f36a`:
+Recommended enablement:
 
-- Scan pin identification works in vanilla STA (`src/dbSta/src/dbSta.cc`):
-  - removes an overly-strict `extPort()` guard
-  - adds/uses fallback scan pin inference by common names (`SI/SE/SO`, etc.)
-- DFT correctness fixes and functionality (DFT subsystem):
-  - scan stitching fixes (no dropped links)
-  - avoids reliance on `sta::TestCell`
-  - scan-out fallback behavior
-  - includes a small DFT regression (`scan_architect_no_mix_nangate45`)
+- `DFT_ENABLE=1` (auto-wires post-floorplan + pre-global-route hooks)
+- `DFT_ENABLE=1 DFT_ROUTE_AWARE=1` (also wires post-global-route hook and defaults `DFT_SCAN_ORDER_METRIC=PIN_TO_NET`)
 
-## Scan-Ordering Benchmark (OpenROAD vs Nearest-Neighbor)
+## Key Knobs
 
-`flow/util/scan_chain_cost.py` runs OpenROAD’s `report_dft_plan -verbose`, computes total Manhattan scan-chain length, and can also compute a simple nearest-neighbor (NN) heuristic for comparison.
+- `DFT_CHAIN_COUNT`: exact number of scan chains
+- `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_LENGTH`: cap bits/chain (also used to infer chain count)
+- `DFT_SCAN_ORDER_METRIC`: `PLACEMENT` (shorter hops) or `PIN_TO_NET` (routing-aware; can look “jumpy”)
+- `DFT_CLOCK_MIXING`: `no_mix` or `clock_mix`
+- `DFT_LOCKUP_POLICY`: `auto`/`warn`/`error`/`off` for mixed clock/edge chains in `clock_mix`
+- `DFT_SCAN_ENABLE_DISABLED_VALUE`: functional-mode value for scan enable (set to `1` for active-low scan enable)
 
-Opt/NN results (lower is better; `openroad_over_nn < 1` means OpenROAD is shorter than NN):
+## Scan Wirelength Reporting (Paper-style metric proxy)
 
-| platform | design | flops | openroad_um | nn_um | openroad_over_nn |
-|---|---|---:|---:|---:|---:|
-| nangate45 | aes | 562 | 3571.680 | 4178.080 | 0.855 |
-| nangate45 | ibex | 1931 | 9197.880 | 10545.640 | 0.872 |
-| nangate45 | jpeg | 4390 | 17903.670 | 20815.750 | 0.860 |
-| asap7 | aes | 562 | 1053.810 | 1222.344 | 0.862 |
-| asap7 | ibex | 273 | 428.652 | 514.404 | 0.833 |
-| asap7 | jpeg | 4325 | 5045.058 | 5709.204 | 0.884 |
-| sky130hd | aes | 562 | 11050.640 | 13137.940 | 0.841 |
-| sky130hd | ibex | 1931 | 21754.680 | 24411.360 | 0.891 |
-| sky130hd | jpeg | 4390 | 50973.380 | 57692.340 | 0.884 |
+`flow/scripts/dft_scan_wirelength.tcl` emits two reports under `$REPORTS_DIR`:
 
-Avg `opt/NN` = `0.865` (~`13.5%` shorter than NN).
+- `dft_scan_wirelength_<tag>.rpt`: dedicated SCAN nets (including scan_enable + scan_in/out)
+- `dft_scan_link_wirelength_<tag>.rpt`: “scan-link nets” inferred from scan-in connectivity
 
-Reproduce (single design):
+`flow/scripts/final_report.tcl` calls `dft_report_scan_wirelength finish` by default; disable with `DFT_REPORT_SCAN_WIRELENGTH=0`.
 
-- `python3 flow/util/scan_chain_cost.py --scan-replace --nearest-neighbor --openroad tools/install/OpenROAD/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/cmp9_or0db856_rp100_20251229_022425/3_5_place_dp.odb --sdc flow/results/nangate45/ibex/cmp9_or0db856_rp100_20251229_022425/3_place.sdc`
+## Visualizing “huge hops”
 
-Notes:
-- ASAP7 needs multiple libs; pass them all, e.g. `--liberty flow/platforms/asap7/lib/NLDM/*_TT_*`.
+`PIN_TO_NET` minimizes distance to existing routed geometry, not Manhattan between flop centers. If a flop’s data/scan-out net already spans the die, the next best scan-in can be far away in placement but still “close” to that net’s routed shape.
 
-## Scan-Chain Integrity Validation (Does It Actually Shift?)
-
-QoR deltas and plan reports are necessary but not sufficient; we also want a basic structural check that the scan path is one continuous chain from `scan_in_0` to `scan_out_0`.
-
-- `flow/util/scan_chain_validate.py` validates scan stitching from a gate-level netlist (or from an ODB by writing a temporary netlist via OpenROAD).
-- It treats `assign` + inserted `BUF*/CLKBUF*` as transparent, so post-P&R buffering doesn’t cause false failures.
-
-Example usage:
-
-- Validate a finished netlist:
-  - `python3 flow/util/scan_chain_validate.py --verilog flow/results/nangate45/ibex/with_dft/6_final.v`
-- Validate from an ODB (writes a temp netlist first):
-  - `python3 flow/util/scan_chain_validate.py --odb flow/results/nangate45/ibex/with_dft/6_final.odb --openroad tools/install/OpenROAD/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --sdc flow/results/nangate45/ibex/with_dft/6_final.sdc --ensure-ports`
-
+The polyline plot (center→center) will show this as large jumps; it does not necessarily imply the routed scan wire is equally bad (use the scan wirelength reports above to judge the routed result).
