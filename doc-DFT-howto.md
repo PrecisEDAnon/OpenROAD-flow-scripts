@@ -1,84 +1,156 @@
-# DFT / Scan — Quickstart (Before vs After)
+# DFT / Scan in ORFS — How To Run (All Modes)
 
-This is a short “how to run” guide. For implementation details, limitations, and scan-order benchmarks, see `doc-DFT.md`.
+This branch integrates OpenROAD DFT scan insertion into the ORFS flow.
 
-## Before (Baseline: no DFT)
+What you get:
+- `scan_replace` (functional flops → scan flops)
+- scan stitching (`execute_dft_plan`) with multiple ordering modes
+- optional “trial route → stitch → incremental route” for routing-aware ordering
+- validation + reporting + visualization utilities
 
-Run the flow normally:
+## Prerequisites
+
+- `tools/OpenROAD` is pinned to `PrecisEDAnon/OpenROAD` (`OpenROAD-clean-DFT`) at `b60cadb4dc3eeaeda4e3a5b6c0f4aeb7e11f82aa`.
+- Build tools (if needed): `./build_openroad.sh --local`
+  - ORFS defaults `OPENROAD_EXE` to `tools/install/OpenROAD/bin/openroad`.
+
+## 0) Baseline (No DFT)
 
 - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=baseline_no_dft finish`
 
-## After (DFT Enabled: scan flops + stitched chain)
+## 1) Enable DFT (Default Mode)
 
-Enable DFT (recommended):
+Recommended:
 
 - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft DFT_ENABLE=1 finish`
 
-This auto-wires the two ORFS DFT hook scripts:
+This auto-wires hook scripts into the existing ORFS hook points:
 
-- `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl`
-  - runs `scan_replace` (functional flops → scan flops)
-  - creates scan ports: `scan_enable_0`, `scan_in_0`, `scan_out_0`
-  - sets `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode timing)
-- `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl`
-  - runs `execute_dft_plan` (stitches the scan chain using placement)
+- `POST_FLOORPLAN_TCL=flow/scripts/dft_scan_post_floorplan.tcl`
+  - applies `set_dft_config ...` and runs `scan_replace`
+  - creates scan ports (or uses instance/pin endpoints if configured)
+- `PRE_GLOBAL_ROUTE_TCL=flow/scripts/dft_scan_pre_global_route.tcl`
+  - optionally places scan ports near chain endpoints
+  - stitches scan chains (unless `DFT_DEFER_STITCH=1`)
 
-Note:
-- If your design contains mixed clock domains and/or negedge flops, ORFS defaults `DFT_LOCKUP_POLICY=auto` and may fall back to `DFT_CLOCK_MIXING=no_mix`, which can increase the number of scan chains/ports.
-  - To force `clock_mix` even when mixed clock/edge chains are detected, set `DFT_LOCKUP_POLICY=off` (you are responsible for lockup/timing correctness).
-- If your library uses active-low scan enable, set `DFT_SCAN_ENABLE_DISABLED_VALUE=1` so functional STA/power disables scan paths correctly.
+Defaults are deliberately “stable for comparisons”:
+- single chain unless you set multi-chain knobs (below)
+- OpenROAD internal ordering unless you set solver/order knobs (below)
 
-## Optional: Routing-aware ordering (trial route, then stitch)
+## 2) Multi-Chain Configuration
 
-If you want scan ordering to use trial global-route guides (paper-style “routing-aware” ordering), defer stitching until after the first global route:
+Pick one of these:
+
+- Exact chain count: `DFT_CHAIN_COUNT=<N>`
+- Cap bits per chain: `DFT_MAX_CHAIN_LENGTH=<bits>` (alias: `DFT_MAX_LENGTH`)
+- Cap chains (upper bound): `DFT_MAX_CHAINS=<N>`
+
+Examples:
+
+- 4 chains:
+  - `... DFT_ENABLE=1 DFT_CHAIN_COUNT=4 finish`
+- Cap length to 500 bits/chain (chain count inferred):
+  - `... DFT_ENABLE=1 DFT_MAX_CHAIN_LENGTH=500 finish`
+
+Validation tip: multi-chain designs should be checked with `--auto-chains` (see below).
+
+## 3) Ordering Modes (How Cells Are Sequenced Within Each Chain)
+
+### 3a) OpenROAD internal (default)
+
+- `DFT_SCAN_SOLVER=openroad` (default)
+- `DFT_SCAN_ORDER_METRIC=PLACEMENT` (default in OpenROAD DFT)
+
+### 3b) Routing-aware ordering (“trial route then stitch”)
+
+Use trial global-route guides for ordering (`PIN_TO_NET`):
 
 - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_route_aware DFT_ENABLE=1 DFT_ROUTE_AWARE=1 finish`
 
-## Optional: ScanOpt-next ordering (bundled solver)
+What `DFT_ROUTE_AWARE=1` does:
+- wires `POST_GLOBAL_ROUTE_TCL=flow/scripts/dft_scan_post_global_route.tcl`
+- sets `DFT_DEFER_STITCH=1` so stitching happens after the first GRT pass
+- defaults `DFT_SCAN_ORDER_METRIC=PIN_TO_NET`
 
-To use the bundled “ScanOpt-next” reference solver (placement-based ordering) instead of OpenROAD’s built-in heuristic:
+### 3c) ScanOpt-next (bundled reference solver)
 
-- `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_scanopt_next DFT_ENABLE=1 DFT_SCAN_SOLVER=scanopt_next finish`
+Runs a dependency-light external solver to re-order cells by placement, then stitches from that explicit order:
 
-## Optional: Reuse existing scan ports / custom naming
+- `... DFT_ENABLE=1 DFT_SCAN_SOLVER=scanopt_next finish`
 
-To stitch against existing scan ports (or to change scan port naming), override the OpenROAD DFT name patterns:
+Optional knobs:
+- `DFT_SCAN_SOLVER_BIN=/path/to/solver` (use an external binary instead of the bundled script)
+- `DFT_SCAN_SOLVER_SEED=<int>`
+- `DFT_SCAN_SOLVER_MAX_2OPT_ITERS=<int>`
+- `DFT_SCAN_SOLVER_DISABLE_2OPT=1`
+
+### 3d) Explicit order file
+
+Force an exact per-chain order:
+
+- `... DFT_ENABLE=1 DFT_SCAN_SOLVER=order_file DFT_SCAN_ORDER_FILE=/path/to/order.txt finish`
+
+Format:
+- One chain per line: `chain_name inst0 inst1 inst2 ...`
+- Single-chain shorthand is allowed: `inst0 inst1 inst2 ...`
+
+## 4) Reuse Existing Scan Ports / Custom Naming
+
+OpenROAD DFT endpoints are configured via name patterns:
 
 - `DFT_SCAN_ENABLE_NAME_PATTERN=<name-or-inst/pin>`
 - `DFT_SCAN_IN_NAME_PATTERN=<name-or-inst/pin-with-{}>`
 - `DFT_SCAN_OUT_NAME_PATTERN=<name-or-inst/pin-with-{}>`
 
-Example (top-level ports named `se`, `si_0`, `so_0`, ...):
-- `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_custom_ports DFT_ENABLE=1 DFT_SCAN_ENABLE_NAME_PATTERN=se DFT_SCAN_IN_NAME_PATTERN=si_{} DFT_SCAN_OUT_NAME_PATTERN=so_{} finish`
+Notes:
+- `{}` is replaced with the chain ordinal (`0`, `1`, ...).
+- If the string contains an unescaped `/`, OpenROAD treats it as `instance/pin` instead of a top-level port.
 
-## Optional: Explicit scan ordering (order file)
+Example (top-level ports `se`, `si_0`, `so_0`, ...):
+- `... DFT_ENABLE=1 DFT_SCAN_ENABLE_NAME_PATTERN=se DFT_SCAN_IN_NAME_PATTERN=si_{} DFT_SCAN_OUT_NAME_PATTERN=so_{} finish`
 
-To force an exact scan ordering per chain (user-defined scan path), provide an order file:
+## 5) Polarity / Mixed Clock Domains (Avoiding “Broken” Chains)
 
-- `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_order_file DFT_ENABLE=1 DFT_SCAN_SOLVER=order_file DFT_SCAN_ORDER_FILE=/path/to/order.txt finish`
+### 5a) Mixed clock/edge chains (lockup not inserted)
 
-File format: `chain_name inst0 inst1 inst2 ...` (one chain per line). For single-chain designs, a single line `inst0 inst1 ...` is also accepted.
+OpenROAD DFT does not insert lockup elements. If `DFT_CLOCK_MIXING=clock_mix` produces mixed-clock/edge chains, ORFS handles it with:
 
-## Sanity Checks
+- `DFT_LOCKUP_POLICY=auto` (default): detect mixed chains and fall back to `DFT_CLOCK_MIXING=no_mix`
+- Alternatives:
+  - `DFT_LOCKUP_POLICY=warn` / `error` / `off`
 
-- Report the plan (from OpenROAD, after `scan_replace`):
-  - `report_dft_plan -verbose`
-- Validate chain integrity from a finished netlist:
-  - `python3 flow/util/scan_chain_validate.py --verilog flow/results/<platform>/<design>/<variant>/6_final.v`
-  - For multi-chain designs (`scan_in_0/scan_out_0`, `scan_in_1/scan_out_1`, ...), use `--auto-chains`.
-- Or validate from an ODB (runs `scan_replace` + `execute_dft_plan` in-memory and writes a temp netlist):
-  - `python3 flow/util/scan_chain_validate.py --odb flow/results/<platform>/<design>/<variant>/3_5_place_dp.odb --openroad $OPENROAD_EXE --liberty <lib> --sdc flow/results/<platform>/<design>/<variant>/3_place.sdc --ensure-ports --scan-replace --execute-dft-plan`
+### 5b) Active-low scan enable
 
-## Compare “Before vs After” QoR
+Functional-mode STA/power is done by disabling scan enable with `set_case_analysis`. Default is `0`.
 
-- Routed wirelength / timing: compare `flow/results/<...>/metrics.json` and the OpenROAD/OpenSTA reports between `baseline_no_dft` and `with_dft`.
-- Scan-chain wire metric on a fixed placement (also runs an NN heuristic for comparison):
-  - `python3 flow/util/scan_chain_cost.py --scan-replace --nearest-neighbor --openroad $OPENROAD_EXE --liberty <lib> --odb flow/results/<...>/3_5_place_dp.odb --sdc flow/results/<...>/3_place.sdc`
+- If your library uses active-low scan enable, set `DFT_SCAN_ENABLE_DISABLED_VALUE=1`.
 
-## Visualize scan chain “jumps”
+## 6) Sanity Checks, Reports, and Metrics
 
-To see the scan chain polyline between placed scan cells (and highlight the longest hops in red), generate a PNG (works in Codex CLI):
+Plan/report (inside OpenROAD):
+- `report_dft_plan -verbose`
+
+Validate from a finished netlist:
+- `python3 flow/util/scan_chain_validate.py --verilog flow/results/<platform>/<design>/<variant>/6_final.v`
+- Multi-chain: add `--auto-chains`.
+
+Validate from an ODB (writes a temporary netlist via OpenROAD):
+- `python3 flow/util/scan_chain_validate.py --odb flow/results/<platform>/<design>/<variant>/3_5_place_dp.odb --openroad $OPENROAD_EXE --liberty <lib> --sdc flow/results/<platform>/<design>/<variant>/3_place.sdc --ensure-ports --scan-replace --execute-dft-plan`
+
+Scan-only routed wirelength (paper-style proxy):
+- `flow/scripts/final_report.tcl` calls `flow/scripts/dft_scan_wirelength.tcl` by default.
+- Reports land in `flow/reports/<platform>/<design>/<variant>/`:
+  - `dft_scan_wirelength_finish.rpt` (dedicated SCAN nets)
+  - `dft_scan_link_wirelength_finish.rpt` (scan-link nets inferred from scan-in connectivity)
+- Disable with `DFT_REPORT_SCAN_WIRELENGTH=0`.
+
+## 7) Visualize Chains / Debug “Huge Hops”
+
+Generate a PNG overlay of the scan chain polyline between placed scan cells (red = longest hops):
 
 - `python3 flow/util/scan_chain_plot.py --verilog flow/results/<platform>/<design>/<variant>/6_final.v --def flow/results/<platform>/<design>/<variant>/6_final.def --out flow/reports/<platform>/<design>/<variant>/dft_scan_chain.png`
 
-To generate SVG instead, use a `.svg` output path (or pass `--format svg`).
+Why hops can be huge (especially with `PIN_TO_NET`):
+- `PIN_TO_NET` minimizes incremental distance to existing routed net geometry, not Manhattan distance between flop centers.
+- A long/spanning source net can make a physically distant next flop look “cheap”.
+- Use the scan wirelength reports above to judge routed impact; the center-to-center polyline is only a visualization.
