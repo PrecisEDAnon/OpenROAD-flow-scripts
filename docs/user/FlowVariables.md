@@ -183,6 +183,8 @@ configuration file.
 | <a name="PLATFORM"></a>PLATFORM| Specifies process design kit or technology node to be used.| |
 | <a name="PLATFORM_TCL"></a>PLATFORM_TCL| Specifies a Tcl script with commands to run before loading design.| |
 | <a name="POST_CTS_TCL"></a>POST_CTS_TCL| Specifies a Tcl script with commands to run after CTS is completed.| |
+| <a name="POST_FLOORPLAN_TCL"></a>POST_FLOORPLAN_TCL| Specifies a Tcl script with commands to run after floorplan, before saving 2_1_floorplan.odb.| |
+| <a name="POST_GLOBAL_ROUTE_TCL"></a>POST_GLOBAL_ROUTE_TCL| Specifies a Tcl script with commands to run after the initial global route succeeds (before repair_design / repair_timing). Useful for trial-routing flows that need to modify the design, then incrementally route only the modified nets.| |
 | <a name="PRE_GLOBAL_ROUTE_TCL"></a>PRE_GLOBAL_ROUTE_TCL| Specifies a Tcl script with commands to run before global route.| |
 | <a name="PROCESS"></a>PROCESS| Technology node or process in use.| |
 | <a name="PWR_NETS_VOLTAGES"></a>PWR_NETS_VOLTAGES| Used for IR Drop calculation.| |
@@ -317,6 +319,8 @@ configuration file.
 - [FOOTPRINT_TCL](#FOOTPRINT_TCL)
 - [HOLD_SLACK_MARGIN](#HOLD_SLACK_MARGIN)
 - [IO_CONSTRAINTS](#IO_CONSTRAINTS)
+- [IO_PLACER_H](#IO_PLACER_H)
+- [IO_PLACER_V](#IO_PLACER_V)
 - [MACRO_BLOCKAGE_HALO](#MACRO_BLOCKAGE_HALO)
 - [MACRO_PLACEMENT_TCL](#MACRO_PLACEMENT_TCL)
 - [MACRO_PLACE_HALO](#MACRO_PLACE_HALO)
@@ -332,6 +336,7 @@ configuration file.
 - [PLACE_DENSITY](#PLACE_DENSITY)
 - [PLACE_DENSITY_LB_ADDON](#PLACE_DENSITY_LB_ADDON)
 - [PLACE_SITE](#PLACE_SITE)
+- [POST_FLOORPLAN_TCL](#POST_FLOORPLAN_TCL)
 - [REMOVE_ABC_BUFFERS](#REMOVE_ABC_BUFFERS)
 - [ROUTING_LAYER_ADJUSTMENT](#ROUTING_LAYER_ADJUSTMENT)
 - [RTLMP_AREA_WT](#RTLMP_AREA_WT)
@@ -428,10 +433,14 @@ configuration file.
 - [DETAILED_METRICS](#DETAILED_METRICS)
 - [GLOBAL_ROUTE_ARGS](#GLOBAL_ROUTE_ARGS)
 - [HOLD_SLACK_MARGIN](#HOLD_SLACK_MARGIN)
+- [IO_PLACER_H](#IO_PLACER_H)
+- [IO_PLACER_V](#IO_PLACER_V)
 - [MAX_REPAIR_ANTENNAS_ITER_GRT](#MAX_REPAIR_ANTENNAS_ITER_GRT)
 - [MAX_REPAIR_TIMING_ITER](#MAX_REPAIR_TIMING_ITER)
 - [MAX_ROUTING_LAYER](#MAX_ROUTING_LAYER)
+- [MIN_BUF_CELL_AND_PORTS](#MIN_BUF_CELL_AND_PORTS)
 - [MIN_ROUTING_LAYER](#MIN_ROUTING_LAYER)
+- [POST_GLOBAL_ROUTE_TCL](#POST_GLOBAL_ROUTE_TCL)
 - [PRE_GLOBAL_ROUTE_TCL](#PRE_GLOBAL_ROUTE_TCL)
 - [REPORT_CLOCK_SKEW](#REPORT_CLOCK_SKEW)
 - [ROUTING_LAYER_ADJUSTMENT](#ROUTING_LAYER_ADJUSTMENT)

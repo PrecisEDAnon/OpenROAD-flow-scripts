@@ -336,6 +336,7 @@ MIN_BUF_CELL_AND_PORTS:
     Used to insert a buffer cell to pass through wires. Used in synthesis.
   stages:
     - synth
+    - grt
 ABC_CLOCK_PERIOD_IN_PS:
   description: >
     Clock period to be used by STA during synthesis. Default value read from
@@ -468,18 +469,28 @@ IO_CONSTRAINTS:
     File path to the IO constraints .tcl file. Also used for manual placement.
   stages:
     - floorplan
+POST_FLOORPLAN_TCL:
+  description: |
+    Specifies a Tcl script with commands to run after floorplan, before saving
+    2_1_floorplan.odb.
+  stages:
+    - floorplan
 IO_PLACER_H:
   description: >
     A list of metal layers on which the I/O pins are placed horizontally (top and bottom
     of the die).
   stages:
+    - floorplan
     - place
+    - grt
 IO_PLACER_V:
   description: >
     A list of metal layers on which the I/O pins are placed vertically (sides of the
     die).
   stages:
+    - floorplan
     - place
+    - grt
 GUI_TIMING:
   description: >
     Load timing information when opening GUI. For large designs, this can be
@@ -980,6 +991,14 @@ ABSTRACT_SOURCE:
 PRE_GLOBAL_ROUTE_TCL:
   description: |
     Specifies a Tcl script with commands to run before global route.
+  stages:
+    - grt
+POST_GLOBAL_ROUTE_TCL:
+  description: |
+    Specifies a Tcl script with commands to run after the initial global route
+    succeeds (before repair_design / repair_timing). Useful for trial-routing
+    flows that need to modify the design, then incrementally route only the
+    modified nets.
   stages:
     - grt
 GLOBAL_ROUTE_ARGS:

@@ -61,6 +61,10 @@ if {
 
 report_cell_usage
 
+# Optional: DFT scan wirelength reporting (dedicated scan nets + scan-link nets).
+source $::env(SCRIPTS_DIR)/dft_scan_wirelength.tcl
+dft_report_scan_wirelength "finish"
+
 report_metrics 6 "finish"
 
 # Save a final image if openroad is compiled with the gui
