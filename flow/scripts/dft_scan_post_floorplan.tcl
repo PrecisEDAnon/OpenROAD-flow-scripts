@@ -74,6 +74,18 @@ if { $max_length == "" } {
 	set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
 	set scan_order_constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
 
+	set insert_lockup [dft_get_env DFT_INSERT_LOCKUP ""]
+	set lockup_cell_rising [dft_get_env DFT_LOCKUP_CELL_RISING ""]
+	set lockup_cell_falling [dft_get_env DFT_LOCKUP_CELL_FALLING ""]
+	set lockup_in_pin [dft_get_env DFT_LOCKUP_IN_PIN ""]
+	set lockup_out_pin [dft_get_env DFT_LOCKUP_OUT_PIN ""]
+	set lockup_clock_pin_rising [dft_get_env DFT_LOCKUP_CLOCK_PIN_RISING ""]
+	set lockup_clock_pin_falling [dft_get_env DFT_LOCKUP_CLOCK_PIN_FALLING ""]
+
+	set timing_buffer_cell [dft_get_env DFT_TIMING_BUFFER_CELL ""]
+	set timing_buffer_in_pin [dft_get_env DFT_TIMING_BUFFER_IN_PIN ""]
+	set timing_buffer_out_pin [dft_get_env DFT_TIMING_BUFFER_OUT_PIN ""]
+
 	set max_chains [dft_get_env DFT_MAX_CHAINS ""]
 	if { $chain_count == "" && $max_chains == "" && $max_length == "" } {
 	  set max_chains 1
@@ -111,6 +123,38 @@ set dft_args [list \
 	}
 	if { $scan_order_constraints_file != "" } {
 	  lappend dft_args -scan_order_constraints_file $scan_order_constraints_file
+	}
+
+	if { $insert_lockup != "" } {
+	  lappend dft_args -insert_lockup $insert_lockup
+	}
+	if { $lockup_cell_rising != "" } {
+	  lappend dft_args -lockup_cell_rising $lockup_cell_rising
+	}
+	if { $lockup_cell_falling != "" } {
+	  lappend dft_args -lockup_cell_falling $lockup_cell_falling
+	}
+	if { $lockup_in_pin != "" } {
+	  lappend dft_args -lockup_in_pin $lockup_in_pin
+	}
+	if { $lockup_out_pin != "" } {
+	  lappend dft_args -lockup_out_pin $lockup_out_pin
+	}
+	if { $lockup_clock_pin_rising != "" } {
+	  lappend dft_args -lockup_clock_pin_rising $lockup_clock_pin_rising
+	}
+	if { $lockup_clock_pin_falling != "" } {
+	  lappend dft_args -lockup_clock_pin_falling $lockup_clock_pin_falling
+	}
+
+	if { $timing_buffer_cell != "" } {
+	  lappend dft_args -timing_buffer_cell $timing_buffer_cell
+	}
+	if { $timing_buffer_in_pin != "" } {
+	  lappend dft_args -timing_buffer_in_pin $timing_buffer_in_pin
+	}
+	if { $timing_buffer_out_pin != "" } {
+	  lappend dft_args -timing_buffer_out_pin $timing_buffer_out_pin
 	}
 	if { $max_length != "" } {
 	  lappend dft_args -max_length $max_length

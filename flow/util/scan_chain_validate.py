@@ -15,6 +15,8 @@ SCAN_ENABLE_PINS = ("SE", "SCE", "SCAN_EN", "SCAN_ENABLE", "SCANENABLE")
 SCAN_OUT_PINS = ("SO", "SCO", "SCANOUT", "SCAN_OUT", "SCAN_DATA_OUT")
 FALLBACK_OUT_PINS = ("Q", "QN")
 PASS_THROUGH_CELL_PREFIXES = ("BUF", "CLKBUF", "INV")
+LOCKUP_INST_PREFIX = "dft_lockup_"
+SCAN_BUF_INST_PREFIX = "dft_scan_buf_"
 
 
 @dataclass(frozen=True)
@@ -159,12 +161,14 @@ def parse_scan_cells_from_verilog(
             for pin, net in port_nets_raw.items()
         }
 
+        norm_inst_name = _normalize_verilog_ident(inst_name)
+
         scan_in_pin = next((p for p in SCAN_IN_PINS if p in port_nets), None)
         scan_enable_pin = next((p for p in SCAN_ENABLE_PINS if p in port_nets), None)
         if scan_in_pin and scan_enable_pin:
             scan_cells.append(
                 ScanCell(
-                    name=_normalize_verilog_ident(inst_name),
+                    name=norm_inst_name,
                     scan_in_pin=scan_in_pin,
                     scan_in_net=port_nets[scan_in_pin],
                     scan_enable_pin=scan_enable_pin,
@@ -172,11 +176,37 @@ def parse_scan_cells_from_verilog(
                     port_nets=port_nets,
                 )
             )
+        elif norm_inst_name.startswith(LOCKUP_INST_PREFIX):
+            # Treat inserted lockup latches as pass-through for connectivity
+            # validation (D -> Q).
+            in_net = port_nets.get("D")
+            out_net = port_nets.get("Q")
+            if in_net and out_net:
+                existing = driven_by.get(out_net)
+                if existing and existing != in_net:
+                    raise RuntimeError(
+                        f"Net '{out_net}' appears to have multiple lockup drivers: "
+                        f"'{existing}' and '{in_net}'."
+                    )
+                driven_by[out_net] = in_net
+        elif norm_inst_name.startswith(SCAN_BUF_INST_PREFIX):
+            # Treat inserted scan-link buffers as pass-through for connectivity
+            # validation (A/I -> X/Z/ZN/Y).
+            in_net = port_nets.get("A") or port_nets.get("I")
+            out_net = port_nets.get("X") or port_nets.get("Z") or port_nets.get("ZN") or port_nets.get("Y")
+            if in_net and out_net:
+                existing = driven_by.get(out_net)
+                if existing and existing != in_net:
+                    raise RuntimeError(
+                        f"Net '{out_net}' appears to have multiple scan-buffer drivers: "
+                        f"'{existing}' and '{in_net}'."
+                    )
+                driven_by[out_net] = in_net
         elif inst_type and _is_pass_through_cell(inst_type):
             # Collapse simple pass-through combinational instances so we can validate
             # scan connectivity even after buffer insertion/resizing.
             in_net = port_nets.get("A") or port_nets.get("I")
-            out_net = port_nets.get("Z") or port_nets.get("ZN")
+            out_net = port_nets.get("X") or port_nets.get("Z") or port_nets.get("ZN") or port_nets.get("Y")
             if in_net and out_net:
                 existing = driven_by.get(out_net)
                 if existing and existing != in_net:

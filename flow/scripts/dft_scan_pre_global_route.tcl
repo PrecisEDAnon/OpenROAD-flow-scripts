@@ -1211,6 +1211,16 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   set timing_hold_weight [dft_get_env DFT_TIMING_HOLD_WEIGHT ""]
   set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
   set scan_order_constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
+  set insert_lockup [dft_get_env DFT_INSERT_LOCKUP ""]
+  set lockup_cell_rising [dft_get_env DFT_LOCKUP_CELL_RISING ""]
+  set lockup_cell_falling [dft_get_env DFT_LOCKUP_CELL_FALLING ""]
+  set lockup_in_pin [dft_get_env DFT_LOCKUP_IN_PIN ""]
+  set lockup_out_pin [dft_get_env DFT_LOCKUP_OUT_PIN ""]
+  set lockup_clock_pin_rising [dft_get_env DFT_LOCKUP_CLOCK_PIN_RISING ""]
+  set lockup_clock_pin_falling [dft_get_env DFT_LOCKUP_CLOCK_PIN_FALLING ""]
+  set timing_buffer_cell [dft_get_env DFT_TIMING_BUFFER_CELL ""]
+  set timing_buffer_in_pin [dft_get_env DFT_TIMING_BUFFER_IN_PIN ""]
+  set timing_buffer_out_pin [dft_get_env DFT_TIMING_BUFFER_OUT_PIN ""]
   set max_chains [dft_get_env DFT_MAX_CHAINS ""]
   if { $chain_count == "" && $max_chains == "" && $max_length == "" } {
     set max_chains 1
@@ -1249,6 +1259,36 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   if { $scan_order_constraints_file != "" } {
     lappend dft_args -scan_order_constraints_file $scan_order_constraints_file
   }
+  if { $insert_lockup != "" } {
+    lappend dft_args -insert_lockup $insert_lockup
+  }
+  if { $lockup_cell_rising != "" } {
+    lappend dft_args -lockup_cell_rising $lockup_cell_rising
+  }
+  if { $lockup_cell_falling != "" } {
+    lappend dft_args -lockup_cell_falling $lockup_cell_falling
+  }
+  if { $lockup_in_pin != "" } {
+    lappend dft_args -lockup_in_pin $lockup_in_pin
+  }
+  if { $lockup_out_pin != "" } {
+    lappend dft_args -lockup_out_pin $lockup_out_pin
+  }
+  if { $lockup_clock_pin_rising != "" } {
+    lappend dft_args -lockup_clock_pin_rising $lockup_clock_pin_rising
+  }
+  if { $lockup_clock_pin_falling != "" } {
+    lappend dft_args -lockup_clock_pin_falling $lockup_clock_pin_falling
+  }
+  if { $timing_buffer_cell != "" } {
+    lappend dft_args -timing_buffer_cell $timing_buffer_cell
+  }
+  if { $timing_buffer_in_pin != "" } {
+    lappend dft_args -timing_buffer_in_pin $timing_buffer_in_pin
+  }
+  if { $timing_buffer_out_pin != "" } {
+    lappend dft_args -timing_buffer_out_pin $timing_buffer_out_pin
+  }
   if { $max_length != "" } {
     lappend dft_args -max_length $max_length
   }
@@ -1266,14 +1306,19 @@ proc dft_apply_dft_config {{clock_mixing_override ""}} {
   set_dft_config {*}$args
 }
 
-proc dft_check_scan_clock_mixing_policy {} {
-  # OpenROAD DFT can generate mixed-clock/edge chains in clock_mix mode, but it
-  # does not insert lockup elements. Make this visible (or fatal) based on a
-  # user policy.
+proc dft_check_scan_clock_mixing_policy {{solver ""}} {
+  # OpenROAD DFT can generate mixed-clock/edge chains in clock_mix mode.
+  # If stitching is done by OpenROAD and lockup insertion is enabled, allow
+  # mixed domains; otherwise enforce the user policy.
   set policy [dft_get_env_lower DFT_LOCKUP_POLICY "auto"]
   if { $policy in {"0" "off" "false" "no"} } {
     return {}
   }
+
+  if { $solver == "" } {
+    set solver [dft_scan_solver]
+  }
+  set lockup_supported [expr {$solver == "openroad" && [dft_get_env_bool DFT_INSERT_LOCKUP 0]}]
 
   set clock_mixing [dft_get_env_lower DFT_CLOCK_MIXING "clock_mix"]
 
@@ -1325,7 +1370,12 @@ proc dft_check_scan_clock_mixing_policy {} {
     error "DFT: clock mixing violation: DFT_CLOCK_MIXING=no_mix but chains are mixed: $mixed_chains"
   }
 
-  set msg "DFT: clock_mix produced mixed-clock/edge chains ($mixed_chains); OpenROAD DFT does not insert lockup elements. Consider DFT_CLOCK_MIXING=no_mix or a lockup-aware flow."
+  if { $lockup_supported } {
+    puts "DFT: mixed-clock/edge chains detected ($mixed_chains); proceeding with lockup insertion (DFT_INSERT_LOCKUP=1)"
+    return {}
+  }
+
+  set msg "DFT: clock_mix produced mixed-clock/edge chains ($mixed_chains) but lockup insertion is disabled. Consider DFT_CLOCK_MIXING=no_mix or set DFT_INSERT_LOCKUP=1 with lockup cell/pin config."
   if { $policy in {"error" "fatal"} } {
     error $msg
   }
@@ -1336,21 +1386,21 @@ proc dft_check_scan_clock_mixing_policy {} {
 }
 
 proc dft_stitch_scan_chains {{tag "pregrt"}} {
-  set policy [dft_get_env_lower DFT_LOCKUP_POLICY "auto"]
-  set mixed_chains [dft_check_scan_clock_mixing_policy]
-  if { $policy == "auto" && [llength $mixed_chains] > 0 } {
-    puts "DFT: AUTO: mixed-clock/edge chains detected ($mixed_chains); re-running with DFT_CLOCK_MIXING=no_mix"
-    dft_apply_dft_config "no_mix"
-    catch { unset ::dft_chain_order_by_name }
-    dft_place_scan_ports_from_plan
-    set mixed_chains [dft_check_scan_clock_mixing_policy]
-  }
-
   set solver [dft_scan_solver]
   set metric [string toupper [string trim [dft_get_env DFT_SCAN_ORDER_METRIC ""]]]
   if { $solver == "scanopt_next" && $metric == "PIN_TO_NET" } {
     puts "DFT: WARNING: DFT_SCAN_SOLVER=scanopt_next doesn't support PIN_TO_NET; using execute_dft_plan"
     set solver "openroad"
+  }
+
+  set policy [dft_get_env_lower DFT_LOCKUP_POLICY "auto"]
+  set mixed_chains [dft_check_scan_clock_mixing_policy $solver]
+  if { $policy == "auto" && [llength $mixed_chains] > 0 } {
+    puts "DFT: AUTO: mixed-clock/edge chains detected ($mixed_chains); re-running with DFT_CLOCK_MIXING=no_mix"
+    dft_apply_dft_config "no_mix"
+    catch { unset ::dft_chain_order_by_name }
+    dft_place_scan_ports_from_plan
+    set mixed_chains [dft_check_scan_clock_mixing_policy $solver]
   }
 
   if { $solver == "openroad" } {

@@ -110,6 +110,9 @@ Heuristic extension that penalizes stitching off timing-critical scan-out nets (
 Notes:
 - `DFT_TIMING_CRITICAL_SLACK=0.0` means “only negative slack is critical”.
 - With timing weights enabled, edge costs become asymmetric; OpenROAD switches to a directed heuristic.
+- Optional structural response: insert non-inverting scan-link buffers when the driving scan-out pin is timing-critical:
+  - `DFT_TIMING_BUFFER_CELL=<buf_cell>` (optional pins: `DFT_TIMING_BUFFER_IN_PIN` default `A`, `DFT_TIMING_BUFFER_OUT_PIN` default `X`)
+  - Applies only to `DFT_SCAN_SOLVER=openroad` stitching.
 
 ### 3f) ScanOpt-next (bundled reference solver)
 
@@ -150,13 +153,25 @@ Example (top-level ports `se`, `si_0`, `so_0`, ...):
 
 ## 5) Polarity / Mixed Clock Domains (Avoiding “Broken” Chains)
 
-### 5a) Mixed clock/edge chains (lockup not inserted)
+### 5a) Mixed clock/edge chains (lockup insertion)
 
-OpenROAD DFT does not insert lockup elements. If `DFT_CLOCK_MIXING=clock_mix` produces mixed-clock/edge chains, ORFS handles it with:
+If `DFT_CLOCK_MIXING=clock_mix` produces mixed-clock/edge chains, ORFS can either avoid mixing (portable) or insert lockups (lockup-aware).
 
+Portable default (no lockups):
 - `DFT_LOCKUP_POLICY=auto` (default): detect mixed chains and fall back to `DFT_CLOCK_MIXING=no_mix`
-- Alternatives:
-  - `DFT_LOCKUP_POLICY=warn` / `error` / `off`
+- Alternatives: `DFT_LOCKUP_POLICY=warn` / `error` / `off`
+
+Lockup-aware stitching (OpenROAD internal stitch only):
+- `DFT_SCAN_SOLVER=openroad`
+- `DFT_INSERT_LOCKUP=1`
+- Lockup cell config (library-specific):
+  - `DFT_LOCKUP_CELL_RISING=<cell>` / `DFT_LOCKUP_CLOCK_PIN_RISING=<pin>`
+  - `DFT_LOCKUP_CELL_FALLING=<cell>` / `DFT_LOCKUP_CLOCK_PIN_FALLING=<pin>`
+  - Optional: `DFT_LOCKUP_IN_PIN` (default `D`), `DFT_LOCKUP_OUT_PIN` (default `Q`)
+
+Notes:
+- ORFS explicit stitch modes (`DFT_SCAN_SOLVER=scanopt_next` / `order_file`) do not currently insert lockups; keep `DFT_LOCKUP_POLICY=auto` or use `DFT_CLOCK_MIXING=no_mix`.
+- `flow/util/scan_chain_validate.py` treats `dft_lockup_*` as pass-through for connectivity validation.
 
 ### 5b) Active-low scan enable
 
