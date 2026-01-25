@@ -10,7 +10,7 @@ What you get:
 
 ## Prerequisites
 
-- `tools/OpenROAD` is pinned to `PrecisEDAnon/OpenROAD` (`OpenROAD-clean-DFT`) at `b60cadb4dc3eeaeda4e3a5b6c0f4aeb7e11f82aa`.
+- `tools/OpenROAD` is pinned to `PrecisEDAnon/OpenROAD` (`OpenROAD-clean-DFT`) at `2fadc72cd524c1eec3c5c5c7a1eeede739b0a805`.
 - Build tools (if needed): `./build_openroad.sh --local`
   - ORFS defaults `OPENROAD_EXE` to `tools/install/OpenROAD/bin/openroad`.
 
@@ -60,6 +60,15 @@ Validation tip: multi-chain designs should be checked with `--auto-chains` (see 
 
 - `DFT_SCAN_SOLVER=openroad` (default)
 - `DFT_SCAN_ORDER_METRIC=PLACEMENT` (default in OpenROAD DFT)
+- `DFT_SCAN_ORDER_SOLVER=HEURISTIC` (default in OpenROAD DFT)
+
+Optional OpenROAD knobs:
+- `DFT_SCAN_ORDER_METRIC={PLACEMENT|PIN_TO_NET}`
+- `DFT_SCAN_ORDER_SOLVER={HEURISTIC|SCANOPT|MIN_FEEDTHROUGH}`
+- `DFT_SCANOPT_ROUNDS=<int>` / `DFT_SCANOPT_SEED=<int>`
+- `DFT_VERTICAL_WEIGHT=<float>` (vertical penalty vs horizontal)
+- `DFT_TIMING_SETUP_WEIGHT=<float>` / `DFT_TIMING_HOLD_WEIGHT=<float>` / `DFT_TIMING_CRITICAL_SLACK=<float>`
+- `DFT_SCAN_ORDER_CONSTRAINTS_FILE=/path/to/constraints.txt`
 
 ### 3b) Routing-aware ordering (“trial route then stitch”)
 
@@ -72,7 +81,37 @@ What `DFT_ROUTE_AWARE=1` does:
 - sets `DFT_DEFER_STITCH=1` so stitching happens after the first GRT pass
 - defaults `DFT_SCAN_ORDER_METRIC=PIN_TO_NET`
 
-### 3c) ScanOpt-next (bundled reference solver)
+### 3c) OpenROAD ScanOpt (internal)
+
+Enable the built-in ScanOpt-style iterated local search:
+
+- `... DFT_ENABLE=1 DFT_SCAN_SOLVER=openroad DFT_SCAN_ORDER_SOLVER=SCANOPT finish`
+
+Optional knobs:
+- `DFT_SCANOPT_ROUNDS=<int>` (more rounds = slower, usually better)
+- `DFT_SCANOPT_SEED=<int>` (deterministic runs)
+
+### 3d) Preferred-direction / min-feedthrough (internal)
+
+Row-sweep DP heuristic for minimizing feedthroughs (penalize vertical movement):
+
+- `... DFT_ENABLE=1 DFT_SCAN_SOLVER=openroad DFT_SCAN_ORDER_SOLVER=MIN_FEEDTHROUGH DFT_VERTICAL_WEIGHT=10.0 finish`
+
+Notes:
+- This mode is intended for “prefer horizontal wiring” regimes; tune with `DFT_VERTICAL_WEIGHT`.
+- Timing-aware weights are ignored in this mode.
+
+### 3e) Timing-aware (internal)
+
+Heuristic extension that penalizes stitching off timing-critical scan-out nets (setup/hold slack proxy):
+
+- `... DFT_ENABLE=1 DFT_SCAN_SOLVER=openroad DFT_TIMING_SETUP_WEIGHT=1.0 DFT_TIMING_HOLD_WEIGHT=1.0 DFT_TIMING_CRITICAL_SLACK=0.0 finish`
+
+Notes:
+- `DFT_TIMING_CRITICAL_SLACK=0.0` means “only negative slack is critical”.
+- With timing weights enabled, edge costs become asymmetric; OpenROAD switches to a directed heuristic.
+
+### 3f) ScanOpt-next (bundled reference solver)
 
 Runs a dependency-light external solver to re-order cells by placement, then stitches from that explicit order:
 
@@ -84,7 +123,7 @@ Optional knobs:
 - `DFT_SCAN_SOLVER_MAX_2OPT_ITERS=<int>`
 - `DFT_SCAN_SOLVER_DISABLE_2OPT=1`
 
-### 3d) Explicit order file
+### 3g) Explicit order file
 
 Force an exact per-chain order:
 
@@ -154,3 +193,14 @@ Why hops can be huge (especially with `PIN_TO_NET`):
 - `PIN_TO_NET` minimizes incremental distance to existing routed net geometry, not Manhattan distance between flop centers.
 - A long/spanning source net can make a physically distant next flop look “cheap”.
 - Use the scan wirelength reports above to judge routed impact; the center-to-center polyline is only a visualization.
+
+## 8) Example Images (Ibex / Nangate45)
+
+These are reference PNGs produced by `flow/util/scan_chain_plot.py` for a single design across modes:
+
+- `docs/images/dft/scan_chain_ibex_mode_openroad.png`
+- `docs/images/dft/scan_chain_ibex_mode_or_scanopt.png`
+- `docs/images/dft/scan_chain_ibex_mode_min_feedthrough.png`
+- `docs/images/dft/scan_chain_ibex_mode_pin_to_net.png`
+- `docs/images/dft/scan_chain_ibex_mode_timing_aware.png`
+- `docs/images/dft/scan_chain_ibex_mode_scanopt_next.png`

@@ -61,29 +61,61 @@ set scan_out_pattern [dft_get_env DFT_SCAN_OUT_NAME_PATTERN "scan_out_{}"]
 set max_length [dft_get_env DFT_MAX_CHAIN_LENGTH ""]
 if { $max_length == "" } {
 	set max_length [dft_get_env DFT_MAX_LENGTH ""]
-}
+	}
 
-set chain_count [dft_get_env DFT_CHAIN_COUNT ""]
-set scan_order_metric [dft_get_env DFT_SCAN_ORDER_METRIC ""]
+	set chain_count [dft_get_env DFT_CHAIN_COUNT ""]
+	set scan_order_metric [dft_get_env DFT_SCAN_ORDER_METRIC ""]
+	set scan_order_solver [dft_get_env DFT_SCAN_ORDER_SOLVER ""]
+	set scanopt_rounds [dft_get_env DFT_SCANOPT_ROUNDS ""]
+	set scanopt_seed [dft_get_env DFT_SCANOPT_SEED ""]
+	set vertical_weight [dft_get_env DFT_VERTICAL_WEIGHT ""]
+	set timing_setup_weight [dft_get_env DFT_TIMING_SETUP_WEIGHT ""]
+	set timing_hold_weight [dft_get_env DFT_TIMING_HOLD_WEIGHT ""]
+	set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
+	set scan_order_constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
 
-set max_chains [dft_get_env DFT_MAX_CHAINS ""]
-if { $chain_count == "" && $max_chains == "" && $max_length == "" } {
-  set max_chains 1
-}
+	set max_chains [dft_get_env DFT_MAX_CHAINS ""]
+	if { $chain_count == "" && $max_chains == "" && $max_length == "" } {
+	  set max_chains 1
+	}
 
 set dft_args [list \
   -clock_mixing $clock_mixing \
 	-scan_enable_name_pattern $scan_enable_pattern \
 	-scan_in_name_pattern $scan_in_pattern \
 	-scan_out_name_pattern $scan_out_pattern \
-]
-if { $scan_order_metric != "" } {
-  lappend dft_args -scan_order_metric $scan_order_metric
-}
-if { $max_length != "" } {
-  lappend dft_args -max_length $max_length
-}
-if { $chain_count != "" } {
+	]
+	if { $scan_order_metric != "" } {
+	  lappend dft_args -scan_order_metric $scan_order_metric
+	}
+	if { $scan_order_solver != "" } {
+	  lappend dft_args -scan_order_solver $scan_order_solver
+	}
+	if { $scanopt_rounds != "" } {
+	  lappend dft_args -scanopt_rounds $scanopt_rounds
+	}
+	if { $scanopt_seed != "" } {
+	  lappend dft_args -scanopt_seed $scanopt_seed
+	}
+	if { $vertical_weight != "" } {
+	  lappend dft_args -vertical_weight $vertical_weight
+	}
+	if { $timing_setup_weight != "" } {
+	  lappend dft_args -timing_setup_weight $timing_setup_weight
+	}
+	if { $timing_hold_weight != "" } {
+	  lappend dft_args -timing_hold_weight $timing_hold_weight
+	}
+	if { $timing_critical_slack != "" } {
+	  lappend dft_args -timing_critical_slack $timing_critical_slack
+	}
+	if { $scan_order_constraints_file != "" } {
+	  lappend dft_args -scan_order_constraints_file $scan_order_constraints_file
+	}
+	if { $max_length != "" } {
+	  lappend dft_args -max_length $max_length
+	}
+	if { $chain_count != "" } {
   lappend dft_args -chain_count $chain_count
 } elseif { $max_chains != "" } {
   lappend dft_args -max_chains $max_chains
