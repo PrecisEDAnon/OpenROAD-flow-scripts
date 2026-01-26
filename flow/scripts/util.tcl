@@ -26,6 +26,12 @@ proc repair_timing_helper { args } {
   append_env_var additional_args SKIP_VT_SWAP -skip_vt_swap 0
   append_env_var additional_args SKIP_CRIT_VT_SWAP -skip_crit_vt_swap 0
   append_env_var additional_args MATCH_CELL_FOOTPRINT -match_cell_footprint 0
+
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    if { [lsearch -exact $args "-equiv_filter_fallback"] == -1 } {
+      lappend additional_args -equiv_filter_fallback
+    }
+  }
   lappend additional_args {*}$args -verbose
 
   log_cmd repair_timing {*}$additional_args
@@ -38,6 +44,9 @@ proc repair_design_helper { } {
   append_env_var additional_args CAP_MARGIN -cap_margin 1
   append_env_var additional_args SLEW_MARGIN -slew_margin 1
   append_env_var additional_args MATCH_CELL_FOOTPRINT -match_cell_footprint 0
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    append additional_args " -equiv_filter_fallback"
+  }
   log_cmd repair_design {*}$additional_args
 }
 
@@ -53,6 +62,9 @@ proc recover_power_helper { } {
   set additional_args "-verbose"
   append_env_var additional_args RECOVER_POWER -recover_power 1
   append_env_var additional_args MATCH_CELL_FOOTPRINT -match_cell_footprint 0
+  if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+    append additional_args " -equiv_filter_fallback"
+  }
   log_cmd repair_timing {*}$additional_args
   report_tns
   report_wns
@@ -105,6 +117,16 @@ proc env_var_equals { env_var value } {
 
 proc env_var_exists_and_non_empty { env_var } {
   return [expr { [info exists ::env($env_var)] && ![string equal $::env($env_var) ""] }]
+}
+
+proc env_var_truthy { env_var } {
+  if { [env_var_exists_and_non_empty $env_var] } {
+    set value [string tolower [string trim $::env($env_var)]]
+    if { [lsearch -exact {1 true yes on} $value] != -1 } {
+      return 1
+    }
+  }
+  return 0
 }
 
 proc append_env_var { list_name var_name prefix has_arg } {

@@ -22,6 +22,21 @@ GENERATE_ARTIFACTS_ON_FAILURE:
     lot of memory, this allows inspecting results on a laptop for a build that
     ran on a server.
   default: 0
+ORFS_ENABLE_NEW_OPENROAD:
+  description: >
+    When set (1/true/yes/on), the flow passes additional opt-in flags to
+    OpenROAD to enable experimental behavior (GPL timing-driven net weights,
+    RSZ equivalent-cell filtering fallback, etc.). When unset/0, the flow uses
+    the baseline OpenROAD invocation.
+  stages:
+    - synth
+    - floorplan
+    - place
+    - cts
+    - grt
+    - route
+    - final
+  default: 1
 TNS_END_PERCENT:
   description: >
     Default TNS_END_PERCENT value for post CTS timing repair. Try fixing all
@@ -1049,10 +1064,11 @@ PRE_GLOBAL_ROUTE_TCL:
     - grt
 GLOBAL_ROUTE_ARGS:
   description: >
-    Replaces default arguments for global route.
+    Additional arguments for FastRoute. When ORFS_ENABLE_NEW_OPENROAD=1, these
+    are appended to the default arguments; otherwise, they replace the defaults.
   stages:
     - grt
-  default: -congestion_iterations 30 -congestion_report_iter_step 5 -verbose
+  default: ""
 MATCH_CELL_FOOTPRINT:
   description: >
     Enforce sizing operations to only swap cells that have the same layout

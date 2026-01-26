@@ -9,7 +9,11 @@ set_placement_padding -global \
 
 puts "Repair setup and hold violations"
 log_cmd estimate_parasitics -placement
-log_cmd repair_timing -repair_tns $::env(TNS_END_PERCENT)
+set repair_timing_args [list -repair_tns $::env(TNS_END_PERCENT)]
+if { [env_var_truthy ORFS_ENABLE_NEW_OPENROAD] } {
+  lappend repair_timing_args -equiv_filter_fallback
+}
+log_cmd repair_timing {*}$repair_timing_args
 
 # Legalize placement after timing repair
 detailed_placement
