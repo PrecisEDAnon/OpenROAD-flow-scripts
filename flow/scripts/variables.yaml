@@ -589,6 +589,13 @@ ENABLE_DPO:
   description: |
     Enable detail placement with improve_placement feature.
   default: 1
+ENABLE_EXTRA_DPL:
+  description: |
+    Enables an extra detailed placement optimization path in OpenROAD's
+    improve_placement. Only meaningful when ENABLE_DPO=1.
+  stages:
+    - place
+  default: 1
 DPO_MAX_DISPLACEMENT:
   description: |
     Specifies how far an instance can be moved when optimizing.
