@@ -401,6 +401,9 @@ $(RESULTS_DIR)/1_synth.sdc: $(RESULTS_DIR)/1_synth.odb
 
 $(eval $(call do-step,2_1_floorplan,$(RESULTS_DIR)/1_synth.odb $(RESULTS_DIR)/1_synth.sdc $(TECH_LEF) $(SC_LEF) $(ADDITIONAL_LEFS) $(FOOTPRINT) $(SIG_MAP_FILE) $(FOOTPRINT_TCL) $(LIB_FILES) $(IO_CONSTRAINTS),floorplan))
 
+# The floorplan step writes the stage SDC as a side effect.
+$(RESULTS_DIR)/2_1_floorplan.sdc: $(RESULTS_DIR)/2_1_floorplan.odb
+
 $(eval $(call do-copy,2_floorplan,2_1_floorplan.sdc,,.sdc))
 
 # STEP 2: Macro Placement
@@ -539,6 +542,9 @@ grt: $(RESULTS_DIR)/5_1_grt.odb
 # STEP 1: Run global route
 #-------------------------------------------------------------------------------
 $(eval $(call do-step,5_1_grt,$(RESULTS_DIR)/4_cts.odb $(FASTROUTE_TCL) $(PRE_GLOBAL_ROUTE_TCL),global_route))
+
+# The global route step writes the stage SDC as a side effect.
+$(RESULTS_DIR)/5_1_grt.sdc: $(RESULTS_DIR)/5_1_grt.odb
 
 # STEP 2: Run detailed route
 #-------------------------------------------------------------------------------

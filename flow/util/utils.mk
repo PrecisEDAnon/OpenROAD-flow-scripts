@@ -4,7 +4,7 @@
 metadata: finish metadata-generate metadata-check
 
 .PHONY: metadata-generate
-metadata-generate:
+metadata-generate: finish
 	mkdir -p $(REPORTS_DIR)
 	echo $(DESIGN_DIR) > $(REPORTS_DIR)/design-dir.txt
 	$(PYTHON_EXE) $(UTILS_DIR)/genMetrics.py -d $(DESIGN_NICKNAME) \
@@ -19,7 +19,7 @@ metadata-generate:
 export RULES_JSON ?= $(DESIGN_DIR)/rules-$(FLOW_VARIANT).json
 
 .PHONY: metadata-check
-metadata-check:
+metadata-check: metadata-generate
 	$(PYTHON_EXE) $(UTILS_DIR)/checkMetadata.py \
 	    -m $(REPORTS_DIR)/metadata.json \
 	    -r $(RULES_JSON) 2>&1 \
