@@ -31,9 +31,9 @@ Always override executables on the command line:
 
 ### DPL: `ENABLE_EXTRA_DPL` (only meaningful when `ENABLE_DPO=1`)
 
-- OpenROAD branch (pushed): `anon-origin/for-export-toggle` @ `e0f3bf5156`
+- OpenROAD branch (pushed): `anon-origin/for-export-toggle` @ `1b8263f903`
   - Fix included: extra-DPL max displacement units (DBU vs sites).
-- ORFS branch (pushed): `anon-origin/orfs-dpl-toggle-rebased` @ `4768f8584`
+- ORFS branch (pushed): `anon-origin/orfs-dpl-toggle-rebased` @ `b5122b543`
 - Toggle behavior:
   - `ENABLE_EXTRA_DPL=1` only takes effect when `ENABLE_DPO=1`.
   - `ENABLE_EXTRA_DPL=0` (default) uses vanilla DPO behavior.
