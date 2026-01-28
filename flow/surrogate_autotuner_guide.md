@@ -1,9 +1,9 @@
 # Surrogate autotuner guide (rebased branch)
 
-This guide is for the **rebased** surrogate integration:
+This guide is for the **rebased** surrogate integration (Jan28 defaults):
 
-- ORFS branch: `orfs-surrogate-rebased`
-- OpenROAD branch: `openroad-surrogate-rebased` (pinned via `tools/OpenROAD`)
+- ORFS branch: `orfs-surrogate-rebased-Jan28`
+- OpenROAD branch: `openroad-surrogate-rebased-Jan28` (pinned via `tools/OpenROAD`)
 
 In the rebased integration, surrogate support is:
 
@@ -17,7 +17,7 @@ This keeps default OpenROAD/ORFS behavior unchanged unless you explicitly opt in
 From the ORFS repo root:
 
 ```bash
-git checkout orfs-surrogate-rebased
+git checkout orfs-surrogate-rebased-Jan28
 git submodule update --init --recursive
 ```
 
