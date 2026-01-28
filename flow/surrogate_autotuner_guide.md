@@ -141,6 +141,15 @@ make -C flow surrogate_tune_synthaware DESIGN_CONFIG=designs/<platform>/<design>
 
 ### C) Autotune (synthesis-aware + optional full-ORFS validation)
 
+Defaults on this branch are set for a “characterization-quality” run:
+
+- `SURROGATE_TIME_BUDGET_S=600` (time-bounded tuning)
+- `SURROGATE_SAMPLES=1e9`, `SURROGATE_{TOP_N,GLOBAL_TOP_N}=560`
+- Validation enabled (`SURROGATE_VALIDATE=1`) with `K=14`, `SURROGATE_VALIDATE_JOBS=10`
+- Route-prefilter enabled (`SURROGATE_ROUTE_VALIDATE=1`) with `SURROGATE_ROUTE_VALIDATE_STAGE=grt`
+
+Set the knobs below to run a faster smoke test.
+
 ```bash
 make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config.mk \
   SURROGATE_SPACE_FILE=designs/<platform>/<design>/surrogate_space.json \
@@ -149,6 +158,52 @@ make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config
   SURROGATE_VALIDATE=1 \
   SURROGATE_VALIDATE_N=20
 ```
+
+### 4.4) Validation selection (conformal + route-prefilter)
+
+When `SURROGATE_VALIDATE=1`, `surrogate_autotune.py` now supports a 2-stage
+validation workflow so the final `K` full `finish` runs are *not* just
+"top-K by surrogate mean":
+
+1. **Optional route-prefilter**: run `make route` on `M` candidates (parallel),
+   collect `5_2_route.json`, and pick the best subset.
+2. **Final eval**: run `make finish` only on the chosen `K` (parallel). If a
+   candidate already ran `route`, `finish` reuses that variant’s route artifacts.
+
+Conformal is used to build a **portfolio** of candidates (mean + pessimistic +
+optimistic) so the set itself changes with uncertainty.
+
+Useful knobs:
+
+- `SURROGATE_VALIDATE_SELECT=mean|ucb|lcb|conformal_portfolio` (default: `conformal_portfolio`)
+- `SURROGATE_VALIDATE_JOBS=<N>` (parallel `finish` jobs)
+- `SURROGATE_ROUTE_VALIDATE=1` (enable route-prefilter stage)
+- `SURROGATE_ROUTE_VALIDATE_STAGE=route|grt` (default: `grt`; `grt` is cheaper and uses `5_1_grt.json`)
+- `SURROGATE_ROUTE_VALIDATE_N=<M>` (prefilter size; default ~`1.4×` `SURROGATE_VALIDATE_N` for `route`, ~`2×` for `grt`)
+- `SURROGATE_ROUTE_VALIDATE_JOBS=<N>` (parallel `route` jobs)
+- `SURROGATE_VALIDATE_PORTFOLIO_MEAN_FRAC=<0..1>` (default: `0.7`)
+- `SURROGATE_VALIDATE_PORTFOLIO_UCB_FRAC=<0..1>` (default: `0.2`)
+- `SURROGATE_VALIDATE_PORTFOLIO_LCB_FRAC=<0..1>` (default: `0.1`)
+- `SURROGATE_CONFORMAL_ALPHA=<a>` (default `0.1`)
+- `SURROGATE_CONFORMAL_SIGMA=fail_risk|constant|1+surrogate_power|log1p_hpwl_est`
+- `SURROGATE_CONFORMAL_FAIL_RISK_C0=<c0>` (default `0.001`)
+- `SURROGATE_SDC_UNITS_PS=<ps/unit>` (optional override; auto-inferred as `1` or `1000`)
+
+Example (prefilter 18 routes, then finish 12 in parallel):
+
+```bash
+make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config.mk \
+  SURROGATE_VALIDATE=1 SURROGATE_VALIDATE_N=12 SURROGATE_VALIDATE_JOBS=12 \
+  SURROGATE_ROUTE_VALIDATE=1 SURROGATE_ROUTE_VALIDATE_N=18 SURROGATE_ROUTE_VALIDATE_JOBS=12
+```
+
+### 4.5) Diversify the surrogate top list (`-portfolio`)
+
+`surrogate_tune.tcl` can pass OpenROAD’s portfolio sampler to improve diversity
+in `surrogate_optimize.json`:
+
+- `SURROGATE_PORTFOLIO=1`
+- `SURROGATE_PORTFOLIO_SHRINK=<0..1>` (default `0.25`)
 
 ## Using a separate surrogate-enabled OpenROAD binary
 

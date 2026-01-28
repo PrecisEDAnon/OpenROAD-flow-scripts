@@ -102,6 +102,11 @@ proc run_equivalence_test { } {
   write_eqy_verilog 4_after_rsz.v
   write_eqy_script
 
+  if { [auto_execok eqy] == "" } {
+    puts "WARNING: EQUIVALENCE_CHECK=1 but 'eqy' is not in PATH; skipping equivalence check. Install eqy or set EQUIVALENCE_CHECK=0."
+    return
+  }
+
   # tclint-disable-next-line command-args
   eval exec eqy -d $::env(LOG_DIR)/4_eqy_output \
     --force \
