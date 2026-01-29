@@ -53,6 +53,11 @@ Examples:
 - Cap length to 500 bits/chain (chain count inferred):
   - `... DFT_ENABLE=1 DFT_MAX_CHAIN_LENGTH=500 finish`
 
+Feasibility notes (OpenROAD will error if infeasible):
+- `DFT_MAX_CHAIN_LENGTH * DFT_MAX_CHAINS < #scan_flops` (not enough capacity)
+- any single required group/path exceeds `DFT_MAX_CHAIN_LENGTH`
+- `DFT_MAX_IMBALANCE` is too strict to satisfy given grouping/assignments
+
 Validation tip: multi-chain designs should be checked with `--auto-chains` (see below).
 
 ## 3) Ordering Modes (How Cells Are Sequenced Within Each Chain)
