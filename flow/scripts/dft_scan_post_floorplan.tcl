@@ -73,6 +73,10 @@ if { $max_length == "" } {
 	set timing_hold_weight [dft_get_env DFT_TIMING_HOLD_WEIGHT ""]
 	set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
 	set scan_order_constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
+	set max_imbalance [dft_get_env DFT_MAX_IMBALANCE ""]
+	if { $max_imbalance == "" } {
+	  set max_imbalance [dft_get_env DFT_MAX_IMBALANCE_PERCENT ""]
+	}
 
 	set insert_lockup [dft_get_env DFT_INSERT_LOCKUP ""]
 	set lockup_cell_rising [dft_get_env DFT_LOCKUP_CELL_RISING ""]
@@ -111,6 +115,9 @@ set dft_args [list \
 	}
 	if { $vertical_weight != "" } {
 	  lappend dft_args -vertical_weight $vertical_weight
+	}
+	if { $max_imbalance != "" } {
+	  lappend dft_args -max_imbalance $max_imbalance
 	}
 	if { $timing_setup_weight != "" } {
 	  lappend dft_args -timing_setup_weight $timing_setup_weight

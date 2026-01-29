@@ -10,7 +10,7 @@ What you get:
 
 ## Prerequisites
 
-- `tools/OpenROAD` is pinned to `PrecisEDAnon/OpenROAD` (`OpenROAD-clean-DFT`) at `2fadc72cd524c1eec3c5c5c7a1eeede739b0a805`.
+- `tools/OpenROAD` is pinned to `PrecisEDAnon/OpenROAD` (`OpenROAD-clean-DFT`) at `9d5965b568187743cdae7fd03b8889dfc79a0080`.
 - Build tools (if needed): `./build_openroad.sh --local`
   - ORFS defaults `OPENROAD_EXE` to `tools/install/OpenROAD/bin/openroad`.
 
@@ -44,6 +44,7 @@ Pick one of these:
 - Exact chain count: `DFT_CHAIN_COUNT=<N>`
 - Cap bits per chain: `DFT_MAX_CHAIN_LENGTH=<bits>` (alias: `DFT_MAX_LENGTH`)
 - Cap chains (upper bound): `DFT_MAX_CHAINS=<N>`
+- Balance constraint (default 30%): `DFT_MAX_IMBALANCE=<percent>` (alias: `DFT_MAX_IMBALANCE_PERCENT`)
 
 Examples:
 
@@ -135,6 +136,33 @@ Force an exact per-chain order:
 Format:
 - One chain per line: `chain_name inst0 inst1 inst2 ...`
 - Single-chain shorthand is allowed: `inst0 inst1 inst2 ...`
+
+### 3h) OpenROAD scan-order constraints file (groups / ordering / chain endpoints)
+
+This is separate from `DFT_SCAN_ORDER_FILE`. It *constrains* OpenROAD’s internal solver instead of specifying the entire solution.
+
+- Enable: `DFT_SCAN_SOLVER=openroad DFT_SCAN_ORDER_CONSTRAINTS_FILE=/path/to/constraints.txt`
+
+Supported directives (comments start with `#`; names refer to scan-flop instance names after `scan_replace`):
+
+- Chain naming and optional endpoint coordinates (integer DBU):
+  - `chain <name> [begin <x> <y>] [end <x> <y>]`
+  - Equivalent forms: `chain_begin <name> <x> <y>` / `chain_end <name> <x> <y>`
+- Grouping (members must stay together in exactly one chain; groups can be hierarchical):
+  - `group <name> [priority] <inst_or_group...>`
+- Strict order (no interpolation; creates fixed adjacency edges):
+  - `path <name> [priority] <inst0 inst1 inst2 ...>`
+  - Aliases: `strict_group` / `strict`
+- Fixed adjacency:
+  - `fixed_edge <from_inst> <to_inst>`
+- Partial order (“before”):
+  - `before <inst_or_group_a> <inst_or_group_b>`
+- Hard assignment of instances/groups to a named chain:
+  - `assign <chain_name> <inst_or_group...>`
+
+Notes:
+- Chain endpoint coordinates affect the ordering objective by adding begin→first and last→end costs for that chain.
+- The tool enforces polarity as a hard constraint using a “falling then rising” structure within each chain; constraints that force rising-before-falling within a chain are rejected.
 
 ## 4) Reuse Existing Scan Ports / Custom Naming
 

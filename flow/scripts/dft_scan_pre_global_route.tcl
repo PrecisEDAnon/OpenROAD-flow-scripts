@@ -1207,6 +1207,10 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   set scanopt_rounds [dft_get_env DFT_SCANOPT_ROUNDS ""]
   set scanopt_seed [dft_get_env DFT_SCANOPT_SEED ""]
   set vertical_weight [dft_get_env DFT_VERTICAL_WEIGHT ""]
+  set max_imbalance [dft_get_env DFT_MAX_IMBALANCE ""]
+  if { $max_imbalance == "" } {
+    set max_imbalance [dft_get_env DFT_MAX_IMBALANCE_PERCENT ""]
+  }
   set timing_setup_weight [dft_get_env DFT_TIMING_SETUP_WEIGHT ""]
   set timing_hold_weight [dft_get_env DFT_TIMING_HOLD_WEIGHT ""]
   set timing_critical_slack [dft_get_env DFT_TIMING_CRITICAL_SLACK ""]
@@ -1246,6 +1250,9 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   }
   if { $vertical_weight != "" } {
     lappend dft_args -vertical_weight $vertical_weight
+  }
+  if { $max_imbalance != "" } {
+    lappend dft_args -max_imbalance $max_imbalance
   }
   if { $timing_setup_weight != "" } {
     lappend dft_args -timing_setup_weight $timing_setup_weight
