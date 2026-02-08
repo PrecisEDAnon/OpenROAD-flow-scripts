@@ -77,6 +77,33 @@ core.*
 # Python bytecode
 __pycache__/
 
+# Local DFT artifacts (pre-placed regressions, plots).
+dft_artifacts/
+demo-outputs/
+preplaced_runs/
+new_highlighter/
+highlighter_flattened/
+highlighter_flattened_latest/
+
+# Local ScanOptpack reference (untarred tarball).
+ScanOptpack-010411.tar
+scanoptpack/
+UCLApack-3-010411/
+
+# Local DFT experiments/worklogs (not part of the productized flow).
+davit-todos/
+slides_dft_update_*.md
+spec-random-comments.md
+highlighter.py
+
+davit-todos/outputs/
+davit-todos/testcases/
+davit-todos/testcases/**/*.odb
+
+# Google doc packaging outputs (generated).
+bullet-point-*/
+amur_table_filled.md
+
 dependencies/
 .vscode/
 .metals/

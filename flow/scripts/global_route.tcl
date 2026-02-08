@@ -37,6 +37,10 @@ proc global_route_helper { } {
     return
   }
 
+  # Optional hook after initial global route succeeds (before repair_design /
+  # repair_timing). Useful for flows that need trial routing.
+  source_env_var_if_exists POST_GLOBAL_ROUTE_TCL
+
   set_placement_padding -global \
     -left $::env(CELL_PAD_IN_SITES_DETAIL_PLACEMENT) \
     -right $::env(CELL_PAD_IN_SITES_DETAIL_PLACEMENT)

@@ -341,6 +341,7 @@ MIN_BUF_CELL_AND_PORTS:
     Used to insert a buffer cell to pass through wires. Used in synthesis.
   stages:
     - synth
+    - grt
 ABC_CLOCK_PERIOD_IN_PS:
   description: >
     Clock period to be used by STA during synthesis. Default value read from
@@ -482,6 +483,7 @@ IO_PLACER_H:
     A list of metal layers on which the I/O pins are placed horizontally (top and bottom
     of the die).
   stages:
+    - floorplan
     - place
     - grt
 IO_PLACER_V:
@@ -489,6 +491,7 @@ IO_PLACER_V:
     A list of metal layers on which the I/O pins are placed vertically (sides of the
     die).
   stages:
+    - floorplan
     - place
     - grt
 GUI_TIMING:
@@ -974,6 +977,439 @@ POST_CTS_TCL:
     Specifies a Tcl script with commands to run after CTS is completed.
   stages:
     - cts
+POST_FLOORPLAN_TCL:
+  description: |
+    Specifies a Tcl script with commands to run after floorplan is completed
+    (before writing `2_1_floorplan.odb`).
+  stages:
+    - floorplan
+DFT_ENABLE:
+  description: >
+    Enable ORFS DFT/scan insertion using the built-in hook scripts. When set,
+    defaults `POST_FLOORPLAN_TCL` and `PRE_GLOBAL_ROUTE_TCL` to the ORFS DFT hook
+    scripts unless they are already set.
+  default: 0
+  stages:
+    - All stages
+DFT_ROUTE_AWARE:
+  description: >
+    When `DFT_ENABLE=1`, enable trial-route-aware scan ordering by deferring scan
+    stitching until after the first global route (uses `POST_GLOBAL_ROUTE_TCL`
+    and sets `DFT_DEFER_STITCH=1`). Defaults `DFT_SCAN_ORDER_METRIC=PIN_TO_NET`
+    unless it is already set.
+  default: 0
+  stages:
+    - All stages
+DFT_CLOCK_MIXING:
+  description: >
+    How scan architect mixes scan flops across clock domains.
+    Pass-through to `set_dft_config -clock_mixing` (`clock_mix` or `no_mix`).
+  default: no_mix
+  stages:
+    - floorplan
+    - grt
+DFT_CHAIN_COUNT:
+  description: >
+    Exact number of scan chains to generate (pass-through to
+    `set_dft_config -chain_count`).
+  stages:
+    - floorplan
+    - grt
+DFT_MAX_CHAINS:
+  description: >
+    Maximum number of scan chains to generate (pass-through to
+    `set_dft_config -max_chains`).
+  stages:
+    - floorplan
+    - grt
+DFT_MAX_CHAIN_LENGTH:
+  description: >
+    Maximum number of scan bits per chain (pass-through to
+    `set_dft_config -max_length`).
+  stages:
+    - floorplan
+    - grt
+DFT_MAX_LENGTH:
+  description: >
+    Alias for `DFT_MAX_CHAIN_LENGTH` (pass-through to `set_dft_config -max_length`).
+  stages:
+    - floorplan
+    - grt
+DFT_SCAN_ORDER_METRIC:
+  description: >
+    Metric for ordering scan cells within each chain. `PLACEMENT` uses cell-to-cell
+    Manhattan distance. `PIN_TO_NET` uses pin-to-net distance to global-route guides
+    (or detailed routes when present), falling back to placement distance.
+  stages:
+    - floorplan
+    - grt
+DFT_SCAN_ORDER_SOLVER:
+  description: >
+    OpenROAD internal scan ordering solver used when `DFT_SCAN_SOLVER=openroad`.
+    Pass-through to `set_dft_config -scan_order_solver` (`HEURISTIC`, `SCANOPT`).
+  default: SCANOPT
+  stages:
+    - floorplan
+    - grt
+DFT_SCANOPT_ROUNDS:
+  description: >
+    Iterated local-search rounds for OpenROAD `-scan_order_solver SCANOPT`
+    (pass-through to `set_dft_config -scanopt_rounds`).
+  default: 500000
+  stages:
+    - floorplan
+    - grt
+DFT_SCANOPT_SEED:
+  description: >
+    Random seed for OpenROAD `-scan_order_solver SCANOPT` (pass-through to
+    `set_dft_config -scanopt_seed`).
+  default: 1
+  stages:
+    - floorplan
+    - grt
+DFT_SCANOPT_TIME_LIMIT:
+  description: >
+    Total time budget (seconds) for OpenROAD scan ordering when
+    `DFT_SCAN_ORDER_SOLVER=SCANOPT` (pass-through to `set_dft_config
+    -scanopt_time_limit`). OpenROAD splits this budget across all scan chains
+    to keep total runtime bounded as chain count increases. `0` means unlimited.
+  default: 15
+  stages:
+    - floorplan
+    - grt
+DFT_SCANOPT_TEMP_CONTROL:
+  description: >
+    Enable ScanOpt temperature control (optional uphill-move acceptance) for
+    OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config
+    -scanopt_temp_control`). When enabled, ScanOpt may accept a worse move with
+    probability `exp(-Δ/temperature)` to escape local minima; use
+    `DFT_SCANOPT_SEED` for reproducibility.
+  stages:
+    - floorplan
+    - grt
+DFT_SCANOPT_T_DIV:
+  description: >
+    Temperature divisor for ScanOpt temp control (pass-through to
+    `set_dft_config -scanopt_t_div`). Larger values reduce uphill acceptance.
+  stages:
+    - floorplan
+    - grt
+DFT_VERTICAL_WEIGHT:
+  description: >
+    Preferred-direction tuning for scan ordering. Vertical movement is weighted
+    by this factor relative to horizontal. Pass-through to `set_dft_config
+    -vertical_weight`.
+  default: 1.0
+  stages:
+    - floorplan
+    - grt
+DFT_MAX_IMBALANCE:
+  description: >
+    Maximum allowed chain-length imbalance (percent). Pass-through to
+    `set_dft_config -max_imbalance`.
+  default: 2
+  stages:
+    - floorplan
+    - grt
+DFT_SCAN_ORDER_CONSTRAINTS_FILE:
+  description: >
+    Optional scan ordering constraints file (ScanOpt-style). Directives:
+    `default_priority <0..127>`, `group [<name>] [<priority>] <inst|group...>`,
+    `path [<name>] [<priority>] inst0 inst1 ...`, `fixed_edge <instA> <instB>`,
+    `before <inst|group> <inst|group>`, `chain <name> [begin <x> <y>|<port|inst/pin>]
+    [end <x> <y>|<port|inst/pin>]`, `assign <chain> <inst|group...>`,
+    `exclude <inst|group...>`.
+  stages:
+    - floorplan
+    - grt
+DFT_TIMING_SETUP_WEIGHT:
+  description: >
+    Timing-aware scan ordering penalty weight for setup slack at the source
+    scan-out pin. Pass-through to `set_dft_config -timing_setup_weight`.
+  stages:
+    - floorplan
+    - grt
+  default: 0
+DFT_TIMING_HOLD_WEIGHT:
+  description: >
+    Timing-aware scan ordering penalty weight for hold slack at the source
+    scan-out pin. Pass-through to `set_dft_config -timing_hold_weight`.
+  stages:
+    - floorplan
+    - grt
+  default: 0
+DFT_TIMING_CRITICAL_SLACK:
+  description: >
+    Slack threshold used by OpenROAD timing-aware scan ordering. `0` means only
+    negative slack is considered critical. Pass-through to `set_dft_config
+    -timing_critical_slack`.
+  stages:
+    - floorplan
+    - grt
+  default: 0
+DFT_EXCLUDE_SHIFT_REGISTERS:
+  description: >
+    Automatically detect simple functional shift-register chains (direct Q→D) and
+    exclude them from scan_replace and scan planning. Pass-through to OpenROAD
+    `set_dft_config -exclude_shift_registers` (boolean).
+  default: 0
+  stages:
+    - floorplan
+    - grt
+DFT_PREFER_QBAR:
+  description: >
+    Prefer using the complemented output (`QN`/`Q_N`) as scan-out when the library
+    does not tag a scan-out port (can reduce added load on functional `Q` nets, at
+    the cost of introducing inversion in the scan path). Pass-through to OpenROAD
+    `set_dft_config -prefer_qbar` (boolean).
+  default: 0
+  stages:
+    - floorplan
+    - grt
+DFT_SHIFT_REGISTER_MIN_LENGTH:
+  description: >
+    Minimum chain length to classify as a shift register when
+    `DFT_EXCLUDE_SHIFT_REGISTERS=1`. Pass-through to OpenROAD
+    `set_dft_config -shift_register_min_length` (must be `>= 2`).
+  default: 4
+  stages:
+    - floorplan
+    - grt
+DFT_INSERT_LOCKUP:
+  description: >
+    Force lockup insertion during scan stitching. Pass-through to
+    `set_dft_config -insert_lockup` (boolean). Note: when
+    `DFT_CLOCK_MIXING=clock_mix`, OpenROAD requires lockup insertion for domain
+    crossings; you must configure lockup cells/pins.
+  stages:
+    - floorplan
+    - grt
+DFT_LOCKUP_CELL_RISING:
+  description: >
+    Lockup latch master cell used when the destination scan flop is rising-edge
+    triggered. Pass-through to `set_dft_config -lockup_cell_rising`.
+  stages:
+    - floorplan
+    - grt
+DFT_LOCKUP_CELL_FALLING:
+  description: >
+    Lockup latch master cell used when the destination scan flop is falling-edge
+    triggered. Pass-through to `set_dft_config -lockup_cell_falling`.
+  stages:
+    - floorplan
+    - grt
+DFT_LOCKUP_IN_PIN:
+  description: >
+    Lockup latch data-in pin name. Pass-through to `set_dft_config -lockup_in_pin`.
+  default: D
+  stages:
+    - floorplan
+    - grt
+DFT_LOCKUP_OUT_PIN:
+  description: >
+    Lockup latch data-out pin name. Pass-through to `set_dft_config -lockup_out_pin`.
+  default: Q
+  stages:
+    - floorplan
+    - grt
+DFT_LOCKUP_CLOCK_PIN_RISING:
+  description: >
+    Lockup latch clock pin name when the destination scan flop is rising-edge
+    triggered. Pass-through to `set_dft_config -lockup_clock_pin_rising`.
+  stages:
+    - floorplan
+    - grt
+DFT_LOCKUP_CLOCK_PIN_FALLING:
+  description: >
+    Lockup latch clock pin name when the destination scan flop is falling-edge
+    triggered. Pass-through to `set_dft_config -lockup_clock_pin_falling`.
+  stages:
+    - floorplan
+    - grt
+DFT_TIMING_BUFFER_CELL:
+  description: >
+    Optional buffer master cell used on timing-critical scan links (between scan
+    flops in the same clock domain). Pass-through to `set_dft_config
+    -timing_buffer_cell`.
+  stages:
+    - floorplan
+    - grt
+DFT_TIMING_BUFFER_IN_PIN:
+  description: >
+    Timing buffer input pin name. Pass-through to `set_dft_config -timing_buffer_in_pin`.
+  default: A
+  stages:
+    - floorplan
+    - grt
+DFT_TIMING_BUFFER_OUT_PIN:
+  description: >
+    Timing buffer output pin name. Pass-through to `set_dft_config -timing_buffer_out_pin`.
+  default: X
+  stages:
+    - floorplan
+    - grt
+DFT_SCAN_ENABLE_NAME_PATTERN:
+  description: >
+    Pattern used by OpenROAD DFT to find or create the scan-enable driver during stitching
+    (pass-through to `set_dft_config -scan_enable_name_pattern`). Supports an optional `{}`
+    placeholder; for scan-enable, OpenROAD replaces it with `0`. If the pattern contains
+    an unescaped `/`, OpenROAD interprets it as `instance/pin` instead of a top-level port.
+  default: scan_enable_{}
+  stages:
+    - floorplan
+    - grt
+DFT_SCAN_IN_NAME_PATTERN:
+  description: >
+    Pattern used by OpenROAD DFT to find or create scan-in drivers during stitching
+    (pass-through to `set_dft_config -scan_in_name_pattern`). Supports an optional `{}`
+    placeholder, replaced by the chain ordinal starting at `0`. If the pattern contains
+    an unescaped `/`, OpenROAD interprets it as `instance/pin` instead of a top-level port.
+  default: scan_in_{}
+  stages:
+    - floorplan
+    - grt
+DFT_SCAN_OUT_NAME_PATTERN:
+  description: >
+    Pattern used by OpenROAD DFT to find or create scan-out loads during stitching
+    (pass-through to `set_dft_config -scan_out_name_pattern`). Supports an optional `{}`
+    placeholder, replaced by the chain ordinal starting at `0`. If the pattern contains
+    an unescaped `/`, OpenROAD interprets it as `instance/pin` instead of a top-level port.
+  default: scan_out_{}
+  stages:
+    - floorplan
+    - grt
+DFT_DEFER_STITCH:
+  description: >
+    When set, skip stitching in `PRE_GLOBAL_ROUTE_TCL` so stitching can be run in
+    `POST_GLOBAL_ROUTE_TCL` (useful for routing-aware ordering).
+  default: 0
+  stages:
+    - grt
+DFT_PLACE_SCAN_PORTS:
+  description: >
+    When enabled, re-place `scan_in_N`/`scan_out_N` ports near their chain endpoints
+    before stitching (helps multi-chain QoR). When unset, ORFS enables it by default
+    when multi-chain is configured.
+  stages:
+    - grt
+DFT_PLACE_SCAN_ENABLE_PORT:
+  description: >
+    When enabled, also re-place `scan_enable_0` (defaults to `DFT_PLACE_SCAN_PORTS`
+    when set).
+  stages:
+    - grt
+DFT_DONT_TOUCH_SCAN_NETS:
+  description: >
+    Mark scan-only nets as `dont_touch` to avoid QoR-driven optimization on scan-only
+    nets (scan_enable tree remains optimizable). Applies after stitching.
+  default: 1
+  stages:
+    - grt
+DFT_BUFFER_SCAN_ENABLE:
+  description: >
+    Buffer/split `scan_enable_0` to reduce fanout before routing (applies after stitching).
+  default: 1
+  stages:
+    - grt
+DFT_SCAN_ENABLE_MAX_FANOUT:
+  description: >
+    Max fanout per buffered `scan_enable_0` branch when `DFT_BUFFER_SCAN_ENABLE=1`.
+  default: 64
+  stages:
+    - grt
+DFT_SCAN_ENABLE_BUFFER_CELL:
+  description: >
+    Buffer cell to use for `scan_enable_0` buffering (defaults to `MIN_BUF_CELL_AND_PORTS[0]`).
+  stages:
+    - grt
+DFT_SCAN_ENABLE_BUFFER_LEVELS:
+  description: >
+    Max buffering levels for `scan_enable_0` buffering.
+  default: 3
+  stages:
+    - grt
+DFT_SCAN_SOLVER:
+  description: >
+    Solver used for ordering scan cells within each chain. `openroad` uses OpenROAD's
+    built-in heuristic. `scanopt_next` uses ORFS' bundled reference solver (or an external
+    binary via `DFT_SCAN_SOLVER_BIN`). `order_file` uses an explicit per-chain ordering from
+    `DFT_SCAN_ORDER_FILE`.
+  default: openroad
+  stages:
+    - grt
+DFT_SCAN_ORDER_FILE:
+  description: >
+    When `DFT_SCAN_SOLVER=order_file`, path to a whitespace-separated order file describing
+    the exact per-chain scan ordering. Format: `chain_name inst0 inst1 ...` (one chain per
+    line). For single-chain designs, a single line `inst0 inst1 ...` is also accepted.
+  stages:
+    - grt
+DFT_SCAN_SOLVER_BIN:
+  description: >
+    Optional path to an external scan ordering solver. When set and `DFT_SCAN_SOLVER=scanopt_next`,
+    ORFS invokes this binary instead of the bundled `flow/util/scan_opt_next.py`. The binary must
+    accept `--input <tsv>` and `--output <path>`.
+  stages:
+    - grt
+DFT_SCAN_SOLVER_ARGS:
+  description: >
+    Extra arguments (as a whitespace-separated list) passed to the scan solver invocation.
+  stages:
+    - grt
+DFT_SCAN_SOLVER_SEED:
+  description: >
+    Random seed passed to the scan solver (when supported).
+  default: 0
+  stages:
+    - grt
+DFT_SCAN_SOLVER_MAX_2OPT_ITERS:
+  description: >
+    Max 2-opt iterations for the bundled `scanopt_next` solver (tuning knob).
+  default: 20000
+  stages:
+    - grt
+DFT_SCAN_SOLVER_DISABLE_2OPT:
+  description: >
+    Disable 2-opt refinement in the bundled `scanopt_next` solver.
+  default: 0
+  stages:
+    - grt
+DFT_LOCKUP_POLICY:
+  description: >
+    Policy when `clock_mix` produces mixed-clock/edge chains. `auto` (default)
+    re-runs planning with `no_mix` (avoids needing lockup cells). `warn` keeps
+    `clock_mix` but prints a warning (stitching will fail unless lockup cells
+    are configured). `error` fails early. `off` skips the check entirely.
+  default: auto
+  stages:
+    - grt
+DFT_REPORT_SCAN_WIRELENGTH:
+  description: >
+    Emit scan wirelength report files and scan-chain cost metrics (placement
+    proxy) in the pre-global-route and final stages.
+  default: 1
+  stages:
+    - grt
+    - final
+DFT_WRITE_SCANDEF:
+  description: >
+    Export a SCANDEF/DEF-style `SCANCHAINS` section to a standalone file in the
+    final stage (calls `write_scandef -file ...` in OpenROAD).
+  default: 0
+  stages:
+    - final
+DFT_SCANDEF_FILE:
+  description: >
+    Output path for the SCANDEF file when `DFT_WRITE_SCANDEF=1` (defaults to
+    `$RESULTS_DIR/6_final.scandef`).
+  stages:
+    - final
+POST_GLOBAL_ROUTE_TCL:
+  description: |
+    Specifies a Tcl script with commands to run after the initial global route
+    completes (before repair_design / repair_timing).
+  stages:
+    - grt
 FASTROUTE_TCL:
   description: |
     Specifies a Tcl script with commands to run before FastRoute.

@@ -8,6 +8,12 @@ repo. Keep it **high-signal** and link out to dedicated docs for deep dives.
 Docs:
 - `doc-DFT-howto.md`: quickstart (how to run ORFS with scan insertion)
 - `doc-DFT.md`: design/implementation notes (knobs, algorithm, QoR deltas, validation tools)
+- `spec-random-comments.md`: requirements + review notes we aligned against
+
+Artifacts (kept out of repo root via `.gitignore` where possible):
+- `dft_artifacts/`: preplaced regress outputs, summaries, temp Tcl, etc.
+- `new_highlighter/`: per-design PNGs from `highlighter.py`
+- `highlighter_flattened/`: flattened PNGs (unique filenames for bulk runs)
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
@@ -21,26 +27,53 @@ Note:
 - `ORFS-clean-DFT` is meant as a baseline snapshot; the knob list below reflects the active `ORFS-toggle-rebased-DFT` branch.
 
 How to run (ORFS):
-- `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl` (runs `scan_replace`, creates scan ports)
-- `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl` (optional scan port placement + runs `execute_dft_plan`)
+- Recommended: `DFT_ENABLE=1` (auto-wires the ORFS DFT hook scripts)
+- Manual wiring:
+  - `POST_FLOORPLAN_TCL=$(pwd)/flow/scripts/dft_scan_post_floorplan.tcl` (runs `scan_replace`, creates scan ports)
+  - `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl` (optional scan port placement + runs `execute_dft_plan`)
+  - Optional routing-aware ordering: `DFT_ROUTE_AWARE=1` (wires `POST_GLOBAL_ROUTE_TCL=.../dft_scan_post_global_route.tcl` and defers stitching)
 
 Key knobs (ORFS-toggle-rebased-DFT):
+- `DFT_ENABLE`: turn on scan insertion/stitching hooks
+- `DFT_ROUTE_AWARE`: use trial-route guides for ordering (`PIN_TO_NET`)
+- `DFT_CLOCK_MIXING`: `no_mix` (default) or `clock_mix` (mixed-clock chains; requires lockup insertion)
+- `DFT_LOCKUP_POLICY`: `auto` (default) / `warn` / `error` / `off` for mixed-clock/edge handling
 - `DFT_CHAIN_COUNT`: fixed number of scan chains (exact)
 - `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH`: max bits per chain (also used to infer chain count when `DFT_CHAIN_COUNT` is not set)
+- `DFT_MAX_IMBALANCE`: max chain-length imbalance percent (default `2`)
+- `DFT_SCAN_ORDER_CONSTRAINTS_FILE`: chain naming + begin/end + grouping/ordering/exclusion constraints (see `tools/OpenROAD/src/dft/README.md`)
+- `DFT_EXCLUDE_SHIFT_REGISTERS`: auto-exclude simple functional shift registers (direct Q→D chains)
+  - `DFT_SHIFT_REGISTER_MIN_LENGTH` (default `4`)
+- `DFT_PREFER_QBAR`: prefer using `QN`/`Q_N` as scan-out when scan-out ports aren’t tagged (can reduce load on functional `Q` nets; introduces scan-path inversion)
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
+- `DFT_SCAN_ORDER_METRIC`: `PIN_TO_NET` (routing-aware) or `PLACEMENT`
+- `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; QoR-focused) / `HEURISTIC`
+- `DFT_SCANOPT_TIME_LIMIT`: total time budget (seconds) split across chains (default `15`)
+- `DFT_SCANOPT_ROUNDS`: SCANOPT iteration budget (default `500000`)
 - `DFT_DONT_TOUCH_SCAN_NETS`: marks most SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn (scan_enable tree is kept optimizable)
 - `DFT_BUFFER_SCAN_ENABLE`: buffers/splits `scan_enable_0` to control fanout and avoid GRT freezes (default `1`)
   - `DFT_SCAN_ENABLE_MAX_FANOUT` (default `64`)
   - `DFT_SCAN_ENABLE_BUFFER_CELL` (default = `MIN_BUF_CELL_AND_PORTS[0]`)
   - `DFT_SCAN_ENABLE_BUFFER_LEVELS` (default `3`)
+- `DFT_SCAN_SOLVER`: `openroad` (default), `scanopt_next`, or `order_file`
+- `DFT_REPORT_SCAN_WIRELENGTH`: emit scan wirelength reports + metrics in final
+- `DFT_WRITE_SCANDEF`: export a standalone SCANDEF file in final
+  - `DFT_SCANDEF_FILE` (optional output path override)
 
 Algorithm sketch:
-- Clustering/partitioning across chains: placement-aware reassignment (“swap/move”) under a per-chain max-length cap.
-- Intra-chain ordering: “TSP path” heuristic (NN + farthest insertion + bounded 2‑opt).
+- Clustering/partitioning across chains: K-means + reassignment (“swap/move”) under a per-chain max-length cap; also tries X/Y axis sweeps and a Hilbert space-filling sweep, then picks the assignment with the smallest worst within-chain Manhattan diameter (tie-break by worst X/Y gap) to suppress multi-chain outliers (“big jumps”).
+- Intra-chain ordering: `SCANOPT` (iterated local search with a superlinear long-edge penalty + worst-edge cleanup moves, including direction-preserving 3-opt segment swap); `HEURISTIC` is NN + insertion + bounded 2‑opt.
 
 QoR snapshot (example: `nangate45/ibex`):
 - DFT vs no-DFT typically costs ~`+8%` detailed-route WL, ~`+9%` instance area (seq area ~`+26%`), ~`+2%` total power.
 - Functional timing is reported with scan disabled (`set_case_analysis 0 scan_enable_0`), so WS deltas are small/run-dependent.
+
+Validation:
+- Preplaced regress: `python3 flow/util/dft_preplaced_regress.py ...` (see `doc-DFT.md`)
+- Plots: `python3 highlighter.py --def ... --verilog ... --output-plot ...` (dashed black edges are scan I/O port→chain-endpoint “stems”, not intra-chain edges; use `flow/util/scan_chain_plot.py --no-io-edges` to hide them)
+
+Status (2026-02-07):
+- Multi-chain “big jumps” reduced via Hilbert/axis sweep partition selection + SCANOPT worst-edge direction-preserving 3-opt; k=22 example plots are in `dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/` (see `doc-DFT.md`).
 
 ---
 

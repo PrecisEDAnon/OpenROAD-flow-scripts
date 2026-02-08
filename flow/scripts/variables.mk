@@ -43,6 +43,21 @@ include $(PLATFORM_DIR)/config.mk
 # is no way to escape space in defaults.py and get "foreach" to work.
 $(foreach line,$(shell $(PYTHON_EXE) $(SCRIPTS_DIR)/defaults.py),$(eval export $(subst __SPACE__, ,$(line))))
 
+#-------------------------------------------------------------------------------
+# DFT / Scan integration (first-class toggle).
+#
+# When enabled, this wires the ORFS DFT hook scripts into the generic hook
+# points already present in the flow.
+ifeq ($(DFT_ENABLE),1)
+  export POST_FLOORPLAN_TCL ?= $(SCRIPTS_DIR)/dft_scan_post_floorplan.tcl
+  export PRE_GLOBAL_ROUTE_TCL ?= $(SCRIPTS_DIR)/dft_scan_pre_global_route.tcl
+  ifeq ($(DFT_ROUTE_AWARE),1)
+    export POST_GLOBAL_ROUTE_TCL ?= $(SCRIPTS_DIR)/dft_scan_post_global_route.tcl
+    export DFT_DEFER_STITCH ?= 1
+    export DFT_SCAN_ORDER_METRIC ?= PIN_TO_NET
+  endif
+endif
+
 export LOG_DIR     = $(WORK_HOME)/logs/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
 export OBJECTS_DIR = $(WORK_HOME)/objects/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
 export REPORTS_DIR = $(WORK_HOME)/reports/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)

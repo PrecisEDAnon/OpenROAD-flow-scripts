@@ -19,6 +19,10 @@ class ChainMetrics:
     manhattan_dbu: int
     manhattan_um: Optional[float]
     avg_step_um: Optional[float]
+    p99_step_dbu: int
+    p99_step_um: Optional[float]
+    max_step_dbu: int
+    max_step_um: Optional[float]
     naive_lex_manhattan_um: Optional[float]
     naive_lex_ratio: Optional[float]
     nearest_neighbor_manhattan_um: Optional[float]
@@ -122,6 +126,7 @@ def run_openroad_plan(
     max_chains: Optional[int],
     max_length: Optional[int],
     clock_mixing: str,
+    scan_order_metric: Optional[str],
     do_scan_replace: bool,
     verbose: bool,
 ) -> str:
@@ -136,6 +141,8 @@ def run_openroad_plan(
         set_dft_args.append(f"-max_length {max_length}")
     if max_chains is not None:
         set_dft_args.append(f"-max_chains {max_chains}")
+    if scan_order_metric:
+        set_dft_args.append(f"-scan_order_metric {scan_order_metric}")
     tcl_lines.append(f"set_dft_config {' '.join(set_dft_args)}")
     if do_scan_replace:
         tcl_lines.append("scan_replace")
@@ -145,12 +152,14 @@ def run_openroad_plan(
         "exit",
     ]
 
+    tmp_dir = Path.cwd() / "dft_artifacts" / "tmp_tcl"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w",
         prefix="scan_chain_cost_",
         suffix=".tcl",
         delete=False,
-        dir=os.getcwd(),
+        dir=str(tmp_dir),
     ) as tcl_file:
         tcl_path = Path(tcl_file.name)
         tcl_file.write("\n".join(tcl_lines) + "\n")
@@ -271,6 +280,25 @@ def manhattan_path_dbu(order: Sequence[str], coords: Dict[str, Tuple[int, int]])
     return total
 
 
+def manhattan_steps_dbu(order: Sequence[str], coords: Dict[str, Tuple[int, int]]) -> List[int]:
+    steps: List[int] = []
+    for a, b in zip(order[:-1], order[1:]):
+        ax, ay = coords[a]
+        bx, by = coords[b]
+        steps.append(abs(ax - bx) + abs(ay - by))
+    return steps
+
+
+def _pctl_nearest_rank(sorted_vals: Sequence[int], p: float) -> int:
+    if not sorted_vals:
+        return 0
+    # Nearest-rank percentile: https://en.wikipedia.org/wiki/Percentile#The_nearest-rank_method
+    import math
+
+    idx = max(0, min(len(sorted_vals) - 1, math.ceil(p * len(sorted_vals)) - 1))
+    return int(sorted_vals[idx])
+
+
 def nearest_neighbor_manhattan_path_dbu(
     order: Sequence[str], coords: Dict[str, Tuple[int, int]], *, start: Optional[str] = None
 ) -> int:
@@ -309,6 +337,11 @@ def compute_chain_metrics(
     units: Optional[int],
     compute_nearest_neighbor: bool,
 ) -> ChainMetrics:
+    steps_dbu = manhattan_steps_dbu(order, coords)
+    steps_sorted = sorted(steps_dbu)
+    p99_step_dbu = _pctl_nearest_rank(steps_sorted, 0.99)
+    max_step_dbu = max(steps_dbu) if steps_dbu else 0
+
     manhattan_dbu = manhattan_path_dbu(order, coords)
     manhattan_um = (manhattan_dbu / units) if units else None
 
@@ -317,6 +350,9 @@ def compute_chain_metrics(
         avg_step_um = (manhattan_dbu / units) / (len(order) - 1)
     else:
         avg_step_um = None
+
+    p99_step_um: Optional[float] = (p99_step_dbu / units) if units else None
+    max_step_um: Optional[float] = (max_step_dbu / units) if units else None
 
     naive_lex_manhattan_um: Optional[float]
     naive_lex_ratio: Optional[float]
@@ -344,6 +380,10 @@ def compute_chain_metrics(
         manhattan_dbu=manhattan_dbu,
         manhattan_um=manhattan_um,
         avg_step_um=avg_step_um,
+        p99_step_dbu=p99_step_dbu,
+        p99_step_um=p99_step_um,
+        max_step_dbu=max_step_dbu,
+        max_step_um=max_step_um,
         naive_lex_manhattan_um=naive_lex_manhattan_um,
         naive_lex_ratio=naive_lex_ratio,
         nearest_neighbor_manhattan_um=nearest_neighbor_manhattan_um,
@@ -386,6 +426,12 @@ def main() -> int:
         help="Maximum scan chain length in bits (enables multiple chains unless capped by --max-chains).",
     )
     parser.add_argument("--clock-mixing", default="clock_mix")
+    parser.add_argument(
+        "--scan-order-metric",
+        type=lambda v: v.strip().upper().replace("-", "_"),
+        default=None,
+        help="Optional scan ordering metric: PLACEMENT or PIN_TO_NET (requires OpenROAD support).",
+    )
     parser.add_argument(
         "--scan-replace",
         action="store_true",
@@ -440,6 +486,7 @@ def main() -> int:
             max_chains=max_chains,
             max_length=args.max_length,
             clock_mixing=args.clock_mixing,
+            scan_order_metric=args.scan_order_metric,
             do_scan_replace=args.scan_replace,
             verbose=args.verbose_openroad,
         )
@@ -494,6 +541,8 @@ def main() -> int:
                 f"{m.name}: cells={m.cells} "
                 f"manhattan_um={m.manhattan_um:.3f} "
                 f"avg_step_um={m.avg_step_um:.3f} "
+                f"p99_step_um={m.p99_step_um:.3f} "
+                f"max_step_um={m.max_step_um:.3f} "
                 f"naive_lex_um={m.naive_lex_manhattan_um:.3f} "
                 f"naive_lex_ratio={m.naive_lex_ratio:.3f}"
                 + (

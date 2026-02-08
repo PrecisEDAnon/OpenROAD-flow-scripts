@@ -409,6 +409,7 @@ def validate_netlist(
     auto_chains: bool,
     scan_in_prefix: str,
     scan_out_prefix: str,
+    max_chain_count: Optional[int] = None,
 ) -> ValidationSummary:
     scan_cells, assigns, driven_by = parse_scan_cells_from_verilog(verilog_path)
     input_ports, output_ports = _parse_ports_from_verilog_lines(verilog_path.read_text().splitlines())
@@ -451,20 +452,37 @@ def validate_netlist(
 
         ords_in = set(scan_in_ports.keys())
         ords_out = set(scan_out_ports.keys())
-        only_in = sorted(o for o in ords_in - ords_out if o is not None)
-        only_out = sorted(o for o in ords_out - ords_in if o is not None)
-        if only_in:
-            errors.append(
-                f"Missing scan-out ports for ordinals: {', '.join(map(str, only_in[:16]))}"
-                f"{'...' if len(only_in) > 16 else ''}"
-            )
-        if only_out:
-            errors.append(
-                f"Missing scan-in ports for ordinals: {', '.join(map(str, only_out[:16]))}"
-                f"{'...' if len(only_out) > 16 else ''}"
-            )
+        if max_chain_count is not None and max_chain_count > 0:
+            expected = set(range(max_chain_count))
+            missing_in = sorted(o for o in expected - ords_in if o is not None)
+            missing_out = sorted(o for o in expected - ords_out if o is not None)
+            if missing_in:
+                errors.append(
+                    f"Missing scan-in ports for ordinals: {', '.join(map(str, missing_in[:16]))}"
+                    f"{'...' if len(missing_in) > 16 else ''}"
+                )
+            if missing_out:
+                errors.append(
+                    f"Missing scan-out ports for ordinals: {', '.join(map(str, missing_out[:16]))}"
+                    f"{'...' if len(missing_out) > 16 else ''}"
+                )
+            ords = sorted(o for o in expected if o in ords_in and o in ords_out)
+        else:
+            only_in = sorted(o for o in ords_in - ords_out if o is not None)
+            only_out = sorted(o for o in ords_out - ords_in if o is not None)
+            if only_in:
+                errors.append(
+                    f"Missing scan-out ports for ordinals: {', '.join(map(str, only_in[:16]))}"
+                    f"{'...' if len(only_in) > 16 else ''}"
+                )
+            if only_out:
+                errors.append(
+                    f"Missing scan-in ports for ordinals: {', '.join(map(str, only_out[:16]))}"
+                    f"{'...' if len(only_out) > 16 else ''}"
+                )
+            ords = sorted(o for o in ords_in & ords_out if o is not None)
 
-        for idx in sorted(o for o in ords_in & ords_out if o is not None):
+        for idx in ords:
             scan_in_name = scan_in_ports[idx]
             scan_out_name = scan_out_ports[idx]
             scan_out_source = _resolve_alias(assigns, scan_out_name)
@@ -526,6 +544,34 @@ def validate_netlist(
         errors.append(
             f"Orphan scan cells: visited {len(visited)}/{len(scan_cells)}; {orphan_cells} not in any chain."
         )
+        if not auto_chains:
+            def ordinal(name: str, prefix: str) -> Optional[int]:
+                if not name.startswith(prefix):
+                    return None
+                suffix = name[len(prefix) :]
+                if not suffix.isdigit():
+                    return None
+                return int(suffix)
+
+            scan_in_ordinals = {
+                ordinal(name, scan_in_prefix)
+                for name in input_ports
+                if ordinal(name, scan_in_prefix) is not None
+            }
+            scan_out_ordinals = {
+                ordinal(name, scan_out_prefix)
+                for name in output_ports
+                if ordinal(name, scan_out_prefix) is not None
+            }
+            has_multiple_chains = any(
+                idx is not None and idx > 0
+                for idx in (scan_in_ordinals & scan_out_ordinals)
+            )
+            if has_multiple_chains:
+                errors.append(
+                    "Hint: this looks like a multi-chain scan design; rerun with "
+                    "`--auto-chains` to validate all `scan_in_N`/`scan_out_N` chains."
+                )
     if duplicate_cells:
         errors.append(
             f"Duplicate scan cells across chains: {duplicate_cells} duplicate occurrence(s)."
