@@ -439,6 +439,7 @@ def validate_netlist(
     auto_chains: bool,
     scan_in_prefix: str,
     scan_out_prefix: str,
+    max_chain_count: Optional[int] = None,
 ) -> ValidationSummary:
     scan_cells, assigns, driven_by = parse_scan_cells_from_verilog(verilog_path)
     input_ports, output_ports = _parse_ports_from_verilog_lines(verilog_path.read_text().splitlines())
@@ -481,20 +482,37 @@ def validate_netlist(
 
         ords_in = set(scan_in_ports.keys())
         ords_out = set(scan_out_ports.keys())
-        only_in = sorted(o for o in ords_in - ords_out if o is not None)
-        only_out = sorted(o for o in ords_out - ords_in if o is not None)
-        if only_in:
-            errors.append(
-                f"Missing scan-out ports for ordinals: {', '.join(map(str, only_in[:16]))}"
-                f"{'...' if len(only_in) > 16 else ''}"
-            )
-        if only_out:
-            errors.append(
-                f"Missing scan-in ports for ordinals: {', '.join(map(str, only_out[:16]))}"
-                f"{'...' if len(only_out) > 16 else ''}"
-            )
+        if max_chain_count is not None and max_chain_count > 0:
+            expected = set(range(max_chain_count))
+            missing_in = sorted(o for o in expected - ords_in if o is not None)
+            missing_out = sorted(o for o in expected - ords_out if o is not None)
+            if missing_in:
+                errors.append(
+                    f"Missing scan-in ports for ordinals: {', '.join(map(str, missing_in[:16]))}"
+                    f"{'...' if len(missing_in) > 16 else ''}"
+                )
+            if missing_out:
+                errors.append(
+                    f"Missing scan-out ports for ordinals: {', '.join(map(str, missing_out[:16]))}"
+                    f"{'...' if len(missing_out) > 16 else ''}"
+                )
+            ords = sorted(o for o in expected if o in ords_in and o in ords_out)
+        else:
+            only_in = sorted(o for o in ords_in - ords_out if o is not None)
+            only_out = sorted(o for o in ords_out - ords_in if o is not None)
+            if only_in:
+                errors.append(
+                    f"Missing scan-out ports for ordinals: {', '.join(map(str, only_in[:16]))}"
+                    f"{'...' if len(only_in) > 16 else ''}"
+                )
+            if only_out:
+                errors.append(
+                    f"Missing scan-in ports for ordinals: {', '.join(map(str, only_out[:16]))}"
+                    f"{'...' if len(only_out) > 16 else ''}"
+                )
+            ords = sorted(o for o in ords_in & ords_out if o is not None)
 
-        for idx in sorted(o for o in ords_in & ords_out if o is not None):
+        for idx in ords:
             scan_in_name = scan_in_ports[idx]
             scan_out_name = scan_out_ports[idx]
             scan_out_source = _resolve_alias(assigns, scan_out_name)

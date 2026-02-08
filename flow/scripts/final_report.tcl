@@ -8,7 +8,7 @@ set_propagated_clock [all_clocks]
 # Ensure all OR created (rsz/cts) instances are connected
 global_connect
 
-write_db $::env(RESULTS_DIR)/6_final.odb
+orfs_write_db $::env(RESULTS_DIR)/6_final.odb
 
 # Delete routing obstructions for final DEF
 source $::env(SCRIPTS_DIR)/deleteRoutingObstructions.tcl
@@ -17,6 +17,19 @@ deleteRoutingObstructions
 write_def $::env(RESULTS_DIR)/6_final.def
 write_verilog $::env(RESULTS_DIR)/6_final.v \
   -remove_cells [find_physical_only_masters]
+
+# Optional: export scan chains for ATPG (SCANDEF/DEF-style SCANCHAINS section).
+if { [info exists ::env(DFT_WRITE_SCANDEF)] && $::env(DFT_WRITE_SCANDEF) != "" && $::env(DFT_WRITE_SCANDEF) != "0" } {
+  if { [info commands write_scandef] == "" } {
+    puts "DFT: WARNING: write_scandef command not available in this OpenROAD build"
+  } else {
+    set scandef_file "$::env(RESULTS_DIR)/6_final.scandef"
+    if { [info exists ::env(DFT_SCANDEF_FILE)] && $::env(DFT_SCANDEF_FILE) != "" } {
+      set scandef_file $::env(DFT_SCANDEF_FILE)
+    }
+    write_scandef -file $scandef_file
+  }
+}
 
 # Run extraction and STA
 if {
@@ -64,6 +77,10 @@ report_cell_usage
 # Optional: DFT scan wirelength reporting (dedicated scan nets + scan-link nets).
 source $::env(SCRIPTS_DIR)/dft_scan_wirelength.tcl
 dft_report_scan_wirelength "finish"
+
+# Optional: DFT scan chain cost proxy (placement-based Manhattan + endpoints).
+source $::env(SCRIPTS_DIR)/dft_scan_chain_cost.tcl
+dft_report_scan_chain_cost "finish"
 
 report_metrics 6 "finish"
 

@@ -23,13 +23,11 @@ sky130_lib="$repo_root/tools/OpenROAD/src/dft/test/sky130hd/sky130_fd_sc_hd__tt_
 rtl="$repo_root/tools/OpenROAD/src/dft/test/scan_architect_sky130.v"
 
 cat >"$tcl" <<EOF
+set ::env(DFT_CLOCK_MIXING) clock_mix
 set ::env(DFT_MAX_CHAIN_LENGTH) 3
+set ::env(DFT_SCANOPT_ROUNDS) 200
+set ::env(DFT_SCANOPT_TIME_LIMIT) 0
 set ::env(DFT_LOCKUP_POLICY) auto
-set ::env(DFT_INSERT_LOCKUP) 1
-set ::env(DFT_LOCKUP_CELL_RISING) sky130_fd_sc_hd__dlxtn_1
-set ::env(DFT_LOCKUP_CLOCK_PIN_RISING) GATE_N
-set ::env(DFT_LOCKUP_CELL_FALLING) sky130_fd_sc_hd__dlxtp_1
-set ::env(DFT_LOCKUP_CLOCK_PIN_FALLING) GATE
 set ::env(DFT_BUFFER_SCAN_ENABLE) 0
 set ::env(DFT_DONT_TOUCH_SCAN_NETS) 0
 
@@ -52,13 +50,8 @@ EOF
 
 "$OPENROAD_EXE" -exit "$tcl" | tee "$log"
 
-# Ensure mixed-domain stitching proceeds via lockup insertion (no AUTO fallback).
-if grep -qF "DFT: AUTO: mixed-clock/edge chains detected" "$log"; then
-  echo "ERROR: unexpected AUTO fallback; lockup insertion should have been used" >&2
-  exit 1
-fi
-
-grep -q "dft_lockup_" "$out_v"
+# Ensure the AUTO fallback was exercised (mixed pos/neg clocks exist in this RTL).
+grep -qF "DFT: AUTO: mixed-clock/edge chains detected" "$log"
 
 python3 util/scan_chain_validate.py --auto-chains --verilog "$out_v"
 

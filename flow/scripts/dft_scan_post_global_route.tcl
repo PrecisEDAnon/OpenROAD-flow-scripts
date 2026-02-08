@@ -37,6 +37,52 @@ if { [info commands dft_set_scan_enable_case_analysis] != "" } {
 # modified nets.
 log_cmd global_route -start_incremental
 
+# Note: `global_route -start_incremental` marks nets as `dont_touch` in OpenDB,
+# which prevents DFT stitching from (re)connecting scan ports to scan flops.
+# Clear it for scan-related nets before modifying connectivity.
+set block [ord::get_db_block]
+if { $block != "NULL" } {
+  # Clear by signal type first (covers nets created/managed by DFT).
+  foreach net [$block getNets] {
+    if { [$net getSigType] == "SCAN" } {
+      $net setDoNotTouch false
+    }
+  }
+
+  # Also clear the configured scan endpoint nets, even if they are not marked
+  # as SCAN (covers custom/reused existing ports/pins).
+  if { [info commands dft_resolve_endpoint_term] != "" } {
+    set enable_term [dft_resolve_endpoint_term [dft_scan_enable_name] INPUT]
+    if { $enable_term != "NULL" } {
+      set net [$enable_term getNet]
+      if { $net != "NULL" } {
+        $net setDoNotTouch false
+      }
+    }
+
+    set chain_count 1
+    with_output_to_variable plan { report_dft_plan }
+    if { ![regexp {Number of chains:\s*([0-9]+)} $plan -> chain_count] } {
+      set chain_count 1
+    }
+    if { $chain_count < 1 } {
+      set chain_count 1
+    }
+    for { set i 0 } { $i < $chain_count } { incr i } {
+      foreach {name io_type} [list [dft_scan_in_name $i] INPUT [dft_scan_out_name $i] OUTPUT] {
+        set term [dft_resolve_endpoint_term $name $io_type]
+        if { $term == "NULL" } {
+          continue
+        }
+        set net [$term getNet]
+        if { $net != "NULL" } {
+          $net setDoNotTouch false
+        }
+      }
+    }
+  }
+}
+
 if { [info commands dft_stitch_scan_chains] != "" } {
   dft_stitch_scan_chains "postgrt"
 } else {
