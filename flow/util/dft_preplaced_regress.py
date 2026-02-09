@@ -101,6 +101,7 @@ def run_openroad_execute_dft_plan(
     chain_count: int,
     max_imbalance: float,
     clock_mixing: str,
+    polarity_mode: str,
     scan_order_metric: Optional[str],
     scan_order_solver: str,
     scanopt_rounds: Optional[int],
@@ -190,6 +191,7 @@ def run_openroad_execute_dft_plan(
         f"-chain_count {chain_count}",
         f"-max_imbalance {max_imbalance}",
         f"-clock_mixing {clock_mixing}",
+        f"-polarity_mode {polarity_mode}",
         f"-scan_order_solver {scan_order_solver}",
         "-scan_enable_name_pattern scan_enable_{}",
         "-scan_in_name_pattern scan_in_{}",
@@ -427,6 +429,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Comma-separated list (percent).",
     )
     ap.add_argument("--clock-mixing", default="no_mix")
+    ap.add_argument(
+        "--polarity-mode",
+        default="mid",
+        help="Polarity handling policy: mid (default) or strict.",
+    )
     ap.add_argument("--scan-order-metric", default=None)
     ap.add_argument("--scan-order-solver", default="SCANOPT")
     ap.add_argument("--scanopt-rounds", type=int, default=500000)
@@ -486,7 +493,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             metric = args.scan_order_metric or "DEFAULT"
             print(
                 f"=== execute_dft_plan: {tag} "
-                f"(solver={args.scan_order_solver}, metric={metric}, clock_mixing={args.clock_mixing}) ==="
+                f"(solver={args.scan_order_solver}, metric={metric}, "
+                f"clock_mixing={args.clock_mixing}, polarity_mode={args.polarity_mode}) ==="
             )
             out_def = out_prefix.with_name(f"{out_prefix.name}_{tag}.def")
             out_v = out_prefix.with_name(f"{out_prefix.name}_{tag}.v")
@@ -508,6 +516,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     chain_count=k,
                     max_imbalance=imb,
                     clock_mixing=args.clock_mixing,
+                    polarity_mode=args.polarity_mode,
                     scan_order_metric=args.scan_order_metric,
                     scan_order_solver=args.scan_order_solver,
                     scanopt_rounds=args.scanopt_rounds,

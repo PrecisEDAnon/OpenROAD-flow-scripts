@@ -1004,6 +1004,17 @@ DFT_CLOCK_MIXING:
   stages:
     - floorplan
     - grt
+DFT_POLARITY_MODE:
+  description: >
+    How scan architect handles rising-edge and falling-edge scan flops within
+    a scan chain. Pass-through to `set_dft_config -polarity_mode` (`mid` or
+    `strict`). `mid` allows mixed polarity per chain by stitching falling-edge
+    flops before rising-edge flops. `strict` forbids mixing polarities within
+    a chain, requiring separate chains when both polarities are present.
+  default: mid
+  stages:
+    - floorplan
+    - grt
 DFT_CHAIN_COUNT:
   description: >
     Exact number of scan chains to generate (pass-through to

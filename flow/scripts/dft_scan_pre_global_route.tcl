@@ -1309,6 +1309,7 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   if { $clock_mixing_override != "" } {
     set clock_mixing $clock_mixing_override
   }
+  set polarity_mode [dft_get_env DFT_POLARITY_MODE "mid"]
 
   set scan_enable_pattern [dft_get_env DFT_SCAN_ENABLE_NAME_PATTERN "scan_enable_{}"]
   set scan_in_pattern [dft_get_env DFT_SCAN_IN_NAME_PATTERN "scan_in_{}"]
@@ -1349,6 +1350,7 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
 
   set dft_args [list \
     -clock_mixing $clock_mixing \
+    -polarity_mode $polarity_mode \
     -scan_enable_name_pattern $scan_enable_pattern \
     -scan_in_name_pattern $scan_in_pattern \
     -scan_out_name_pattern $scan_out_pattern \

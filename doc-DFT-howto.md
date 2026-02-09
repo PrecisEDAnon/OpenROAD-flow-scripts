@@ -27,6 +27,7 @@ This auto-wires the two ORFS DFT hook scripts:
 Note:
 - If your design contains mixed clock domains and/or negedge flops, ORFS defaults `DFT_LOCKUP_POLICY=auto` and may fall back to `DFT_CLOCK_MIXING=no_mix`, which can increase the number of scan chains/ports.
   - To keep `clock_mix`, set `DFT_LOCKUP_POLICY=off` and configure lockup insertion (at minimum: `DFT_LOCKUP_CELL_RISING` + `DFT_LOCKUP_CLOCK_PIN_RISING`, and likewise `*_FALLING` if negedge scan flops exist).
+- Polarity defaults to `DFT_POLARITY_MODE=mid` (mixed polarity allowed; falling-edge flops are stitched before rising-edge flops within each chain). To forbid mixing polarities within a chain, set `DFT_POLARITY_MODE=strict` (may require additional chains when both polarities exist).
 
 ## Optional: Routing-aware ordering (trial route, then stitch)
 

@@ -49,6 +49,7 @@ proc dft_set_scan_enable_case_analysis {scan_enable_name} {
 #   - DFT_MAX_CHAINS (explicit cap), and/or
 #   - DFT_MAX_CHAIN_LENGTH (aka DFT_MAX_LENGTH) to bound chain length in bits.
 set clock_mixing [dft_get_env DFT_CLOCK_MIXING "no_mix"]
+set polarity_mode [dft_get_env DFT_POLARITY_MODE "mid"]
 set scan_enable_pattern [dft_get_env DFT_SCAN_ENABLE_NAME_PATTERN "scan_enable_{}"]
 set scan_in_pattern [dft_get_env DFT_SCAN_IN_NAME_PATTERN "scan_in_{}"]
 set scan_out_pattern [dft_get_env DFT_SCAN_OUT_NAME_PATTERN "scan_out_{}"]
@@ -89,6 +90,7 @@ set max_chains [dft_get_env DFT_MAX_CHAINS ""]
 
 set dft_args [list \
   -clock_mixing $clock_mixing \
+  -polarity_mode $polarity_mode \
 	-scan_enable_name_pattern $scan_enable_pattern \
 	-scan_in_name_pattern $scan_in_pattern \
 	-scan_out_name_pattern $scan_out_pattern \
