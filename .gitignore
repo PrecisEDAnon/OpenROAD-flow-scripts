@@ -101,7 +101,9 @@ davit-todos/testcases/
 davit-todos/testcases/**/*.odb
 
 # Google doc packaging outputs (generated).
-bullet-point-*/
+bullet-point-[0-9]*/
+bullet-point-generator/testcases/
+bullet-point-generator/**/tmp_tcl/
 amur_table_filled.md
 
 dependencies/
