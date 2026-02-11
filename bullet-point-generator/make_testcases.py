@@ -124,6 +124,10 @@ def _write_group_constraints(
     lines: List[str] = []
     lines.append("# Auto-generated scan constraints (groups + before).")
     lines.append("# Note: chain begin/end + chain_count are supplied by the runner.")
+    lines.append(
+        "# GROUP2 is intentionally chunked (no single GROUP2 supergroup) so K>1 runs can"
+        "# still satisfy tight max_imbalance constraints by distributing chunks across chains."
+    )
 
     g1_chunks = list(_chunk(group1, chunk_size))
     for idx, chunk in enumerate(g1_chunks):
@@ -135,11 +139,8 @@ def _write_group_constraints(
     g2_chunks = list(_chunk(group2, chunk_size))
     for idx, chunk in enumerate(g2_chunks):
         lines.append("group G2_%d %s" % (idx, " ".join(chunk)))
-    lines.append(
-        "group GROUP2 %s" % (" ".join([f"G2_{i}" for i in range(len(g2_chunks))]))
-    )
-
-    lines.append("before GROUP1 GROUP2")
+    for idx in range(len(g2_chunks)):
+        lines.append(f"before GROUP1 G2_{idx}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines) + "\n")
 
@@ -187,6 +188,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     real1_dir.mkdir(parents=True, exist_ok=True)
     base_scan_odb = real1_dir / "jpeg_real1_scan.odb"
     scan_list_tsv = real1_dir / "scanffs.tsv"
+    scan_pins_tsv = real1_dir / "scanff_pins.tsv"
     sdc_min = real1_dir / "dft.sdc"
     _write_min_clock_sdc(out_sdc=sdc_min, base_sdc=base.base_sdc, extra_clock_ports=[])
 
@@ -218,14 +220,60 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Emit scanff placements list for downstream selection.
         f"set fp [open {_tcl_quote(scan_list_tsv)} w]",
         "puts $fp \"name\\tx\\ty\\tmaster\"",
+        f"set fp2 [open {_tcl_quote(scan_pins_tsv)} w]",
+        "puts $fp2 \"name\\tin_x\\tin_y\\tout_x\\tout_y\\tin_pin\\tout_pin\\tmaster\"",
         "set block [ord::get_db_block]",
         "foreach inst [$block getInsts] {",
         "  set master [$inst getMaster]",
         "  if {[$master findMTerm SCD] == \"NULL\" && [$master findMTerm SI] == \"NULL\"} { continue }",
         "  lassign [$inst getLocation] x y",
         "  puts $fp \"[$inst getName]\\t$x\\t$y\\t[$master getName]\"",
+        "  # Pin-based coords for asymmetric (directed) costs: scan_out -> scan_in.",
+        "  set it_in [$inst findITerm SCD]",
+        "  set in_pin \"SCD\"",
+        "  if { $it_in == \"NULL\" } {",
+        "    set it_in [$inst findITerm SI]",
+        "    set in_pin \"SI\"",
+        "  }",
+        "  if { $it_in == \"NULL\" } { continue }",
+        "",
+        "  # Prefer a connected Q, then a connected Q_N, then fall back to any present.",
+        "  set it_q [$inst findITerm Q]",
+        "  set it_qn [$inst findITerm QN]",
+        "  set it_qn2 [$inst findITerm Q_N]",
+        "  set it_out \"NULL\"",
+        "  set out_pin \"\"",
+        "  if { $it_q != \"NULL\" && [$it_q getNet] != \"NULL\" } {",
+        "    set it_out $it_q",
+        "    set out_pin \"Q\"",
+        "  } elseif { $it_qn != \"NULL\" && [$it_qn getNet] != \"NULL\" } {",
+        "    set it_out $it_qn",
+        "    set out_pin \"QN\"",
+        "  } elseif { $it_qn2 != \"NULL\" && [$it_qn2 getNet] != \"NULL\" } {",
+        "    set it_out $it_qn2",
+        "    set out_pin \"Q_N\"",
+        "  } elseif { $it_q != \"NULL\" } {",
+        "    set it_out $it_q",
+        "    set out_pin \"Q\"",
+        "  } elseif { $it_qn != \"NULL\" } {",
+        "    set it_out $it_qn",
+        "    set out_pin \"QN\"",
+        "  } elseif { $it_qn2 != \"NULL\" } {",
+        "    set it_out $it_qn2",
+        "    set out_pin \"Q_N\"",
+        "  }",
+        "  if { $it_out == \"NULL\" } { continue }",
+        "",
+        "  set bb_in [$it_in getBBox]",
+        "  set in_x [$bb_in xMin]",
+        "  set in_y [$bb_in yMin]",
+        "  set bb_out [$it_out getBBox]",
+        "  set out_x [$bb_out xMin]",
+        "  set out_y [$bb_out yMin]",
+        "  puts $fp2 \"[$inst getName]\\t$in_x\\t$in_y\\t$out_x\\t$out_y\\t$in_pin\\t$out_pin\\t[$master getName]\"",
         "}",
         "close $fp",
+        "close $fp2",
         f"write_db {_tcl_quote(base_scan_odb)}",
         "exit",
     ]

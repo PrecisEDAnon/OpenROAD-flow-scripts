@@ -49,7 +49,7 @@ proc dft_set_scan_enable_case_analysis {scan_enable_name} {
 #   - DFT_MAX_CHAINS (explicit cap), and/or
 #   - DFT_MAX_CHAIN_LENGTH (aka DFT_MAX_LENGTH) to bound chain length in bits.
 set clock_mixing [dft_get_env DFT_CLOCK_MIXING "no_mix"]
-set polarity_mode [dft_get_env DFT_POLARITY_MODE "mid"]
+set polarity_mode [dft_get_env DFT_POLARITY_MODE "strict"]
 set scan_enable_pattern [dft_get_env DFT_SCAN_ENABLE_NAME_PATTERN "scan_enable_{}"]
 set scan_in_pattern [dft_get_env DFT_SCAN_IN_NAME_PATTERN "scan_in_{}"]
 set scan_out_pattern [dft_get_env DFT_SCAN_OUT_NAME_PATTERN "scan_out_{}"]
@@ -252,7 +252,7 @@ proc dft_place_scan_ports_minimal {scan_enable_name scan_in_pattern scan_out_pat
     set y_um [ord::dbu_to_microns $y_dbu]
   if { [catch {
       place_pin -pin_name $pin_name -layer $layer_name \
-        -location [list $x_um $y_um]
+        -location [list $x_um $y_um] -force_to_die_boundary
     } err] } {
       puts "DFT: WARNING: place_pin failed for '$pin_name' on '$layer_name': $err"
     }

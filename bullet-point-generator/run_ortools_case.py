@@ -65,6 +65,34 @@ def _load_scanffs_tsv(tsv_path: Path) -> Tuple[List[str], List[int], List[int]]:
     return names, xs, ys
 
 
+def _load_scanff_pins_tsv(
+    tsv_path: Path,
+) -> Tuple[List[str], List[int], List[int], List[int], List[int]]:
+    names: List[str] = []
+    in_xs: List[int] = []
+    in_ys: List[int] = []
+    out_xs: List[int] = []
+    out_ys: List[int] = []
+    lines = tsv_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if not lines or not lines[0].startswith("name\t"):
+        raise ValueError(f"Unexpected TSV header: {tsv_path}")
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) < 5:
+            continue
+        name, in_x_s, in_y_s, out_x_s, out_y_s = fields[0], fields[1], fields[2], fields[3], fields[4]
+        names.append(name)
+        in_xs.append(int(in_x_s))
+        in_ys.append(int(in_y_s))
+        out_xs.append(int(out_x_s))
+        out_ys.append(int(out_y_s))
+    if not names:
+        raise ValueError(f"No scanffs parsed from {tsv_path}")
+    return names, in_xs, in_ys, out_xs, out_ys
+
+
 def _parse_corner(
     *,
     name: str,
@@ -86,10 +114,10 @@ def _parse_corner(
     raise ValueError(f"Unsupported corner '{name}'. Use LL/UL/UR or x,y.")
 
 
-def _plot_order_png(
+def _plot_edges_png(
     *,
     out_png: Path,
-    order_xy: List[Tuple[int, int]],
+    edges: List[Tuple[Tuple[int, int], Tuple[int, int]]],
     diearea_dbu: Tuple[int, int, int, int],
     highlight_top_k: int = 50,
 ) -> None:
@@ -102,12 +130,10 @@ def _plot_order_png(
 
     x0, y0, x1, y1 = diearea_dbu
 
-    pts = order_xy
-    edges = [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
-    dists = [
-        abs(pts[i + 1][0] - pts[i][0]) + abs(pts[i + 1][1] - pts[i][1])
-        for i in range(len(pts) - 1)
-    ]
+    if not edges:
+        return
+
+    dists = [abs(b[0] - a[0]) + abs(b[1] - a[1]) for (a, b) in edges]
     idx_sorted = sorted(range(len(dists)), key=lambda i: dists[i], reverse=True)
     hi = set(idx_sorted[: max(0, highlight_top_k)])
 
@@ -134,8 +160,8 @@ def _plot_order_png(
         )
 
     # Start/end points.
-    ax.scatter([pts[0][0]], [pts[0][1]], s=18, c="black", marker="o", zorder=10)
-    ax.scatter([pts[-1][0]], [pts[-1][1]], s=18, c="black", marker="s", zorder=10)
+    ax.scatter([edges[0][0][0]], [edges[0][0][1]], s=18, c="black", marker="o", zorder=10)
+    ax.scatter([edges[-1][1][0]], [edges[-1][1][1]], s=18, c="black", marker="s", zorder=10)
 
     ax.set_xlim(x0, x1)
     ax.set_ylim(y0, y1)
@@ -154,6 +180,7 @@ class OrtoolsResult:
     time_limit_s: float
     wall_s: float
     nodes_scanff: int
+    cost_model: str
     total_cost_dbu: int
     total_cost_um: float
     begin_dbu: Tuple[int, int]
@@ -162,7 +189,9 @@ class OrtoolsResult:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Run OR-Tools TSP path for bullet-point-3 (K=1).")
+    ap = argparse.ArgumentParser(
+        description="Run OR-Tools directed TSP path (ATSP) for bullet-point-3 (K=1)."
+    )
     ap.add_argument("--case-id", required=True, help="E.g. 3c, 3d.")
     ap.add_argument("--testcase", required=True, help="Typically JPEG-REAL1.")
     ap.add_argument("--testcases-dir", type=Path, default=Path("bullet-point-generator/testcases"))
@@ -186,8 +215,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         raise FileNotFoundError(final_def)
 
     scanffs_tsv = testcases_dir / args.testcase / "scanffs.tsv"
-    if not scanffs_tsv.exists():
-        raise FileNotFoundError(scanffs_tsv)
+    scanff_pins_tsv = testcases_dir / args.testcase / "scanff_pins.tsv"
+    if not scanff_pins_tsv.exists() and not scanffs_tsv.exists():
+        raise FileNotFoundError(scanff_pins_tsv)
 
     die = manifest.get("diearea_dbu")
     if die is None:
@@ -195,17 +225,32 @@ def main(argv: Optional[List[str]] = None) -> int:
     begin = _parse_corner(name=args.begin, die_ll=die["ll"], die_ur=die["ur"])
     end = _parse_corner(name=args.end, die_ll=die["ll"], die_ur=die["ur"])
 
-    scan_names, scan_xs, scan_ys = _load_scanffs_tsv(scanffs_tsv)
+    cost_model = "pin_atsp"
+    if scanff_pins_tsv.exists():
+        scan_names, in_xs, in_ys, out_xs, out_ys = _load_scanff_pins_tsv(scanff_pins_tsv)
+    else:
+        # Fallback: symmetric (point-based) costs only. Regenerate testcases to
+        # get pin-level scan_in/scan_out coordinates for ATSP.
+        print(
+            f"[WARN] Missing {scanff_pins_tsv}; falling back to symmetric point costs from {scanffs_tsv}."
+        )
+        scan_names, scan_xs, scan_ys = _load_scanffs_tsv(scanffs_tsv)
+        in_xs, in_ys = scan_xs, scan_ys
+        out_xs, out_ys = scan_xs, scan_ys
+        cost_model = "point_stsp_fallback"
     units_per_micron, diearea_dbu = _read_units_and_diearea(final_def)
 
     # Node mapping:
     #   0           => BEGIN
     #   1..N        => scanffs (in TSV order)
     #   N+1         => END
-    xs = [begin[0], *scan_xs, end[0]]
-    ys = [begin[1], *scan_ys, end[1]]
-    n = len(xs)
+    in_x_all = [begin[0], *in_xs, end[0]]
+    in_y_all = [begin[1], *in_ys, end[1]]
+    out_x_all = [begin[0], *out_xs, end[0]]
+    out_y_all = [begin[1], *out_ys, end[1]]
+    n = len(in_x_all)
     assert n == len(scan_names) + 2
+    assert n == len(in_y_all) == len(out_x_all) == len(out_y_all)
 
     from ortools.constraint_solver import pywrapcp, routing_enums_pb2  # type: ignore[import-not-found]
 
@@ -215,7 +260,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     def dist_cb(from_index: int, to_index: int) -> int:
         a = manager.IndexToNode(from_index)
         b = manager.IndexToNode(to_index)
-        return abs(xs[a] - xs[b]) + abs(ys[a] - ys[b])
+        return abs(out_x_all[a] - in_x_all[b]) + abs(out_y_all[a] - in_y_all[b])
 
     transit_cb = routing.RegisterTransitCallback(dist_cb)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_cb)
@@ -242,6 +287,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             time_limit_s=args.time_limit_s,
             wall_s=wall_s,
             nodes_scanff=len(scan_names),
+            cost_model=cost_model,
             total_cost_dbu=0,
             total_cost_um=0.0,
             begin_dbu=begin,
@@ -269,6 +315,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         time_limit_s=args.time_limit_s,
         wall_s=wall_s,
         nodes_scanff=len(scan_names),
+        cost_model=cost_model,
         total_cost_dbu=cost_dbu,
         total_cost_um=cost_um,
         begin_dbu=begin,
@@ -278,8 +325,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     (out_dir / "metrics.json").write_text(json.dumps(asdict(res), indent=2) + "\n")
 
     if not args.no_plot:
-        order_xy = [(xs[node], ys[node]) for node in route_nodes]
-        _plot_order_png(out_png=out_dir / "plot.png", order_xy=order_xy, diearea_dbu=diearea_dbu)
+        plot_edges: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
+        idx = routing.Start(0)
+        while not routing.IsEnd(idx):
+            a = manager.IndexToNode(idx)
+            next_idx = sol.Value(routing.NextVar(idx))
+            b = manager.IndexToNode(next_idx)
+            plot_edges.append(((out_x_all[a], out_y_all[a]), (in_x_all[b], in_y_all[b])))
+            idx = next_idx
+        _plot_edges_png(out_png=out_dir / "plot.png", edges=plot_edges, diearea_dbu=diearea_dbu)
 
     print(json.dumps(asdict(res), indent=2))
     return 0
@@ -287,4 +341,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

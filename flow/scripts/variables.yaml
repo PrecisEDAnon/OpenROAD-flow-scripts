@@ -292,19 +292,24 @@ SYNTH_RETIME_MODULES:
     optimal distribution of registers on long pipelines. See OR discussion #8080.
   stages:
     - synth
+DFF_MAP_FILE:
+  description: |
+    Optional mapping file supplied to Yosys to map D flip-flops
+  stages:
+    - synth
 LATCH_MAP_FILE:
   description: |
-    List of latches treated as a black box by Yosys.
+    Optional mapping file supplied to Yosys to map latches
   stages:
     - synth
 CLKGATE_MAP_FILE:
   description: |
-    List of cells for gating clock treated as a black box by Yosys.
+    Optional mapping file supplied to Yosys to map clock gating cells
   stages:
     - synth
 ADDER_MAP_FILE:
   description: |
-    List of adders treated as a black box by Yosys.
+    Optional mapping file supplied to Yosys to map adders
   stages:
     - synth
 TIEHI_CELL_AND_PORT:
@@ -425,6 +430,10 @@ PLACE_SITE:
     - floorplan
   type: string
   tunable: 1
+LAYER_PARASITICS_FILE:
+  description: |
+    Path to per layer parasitics file. Defaults to $(PLATFORM_DIR)/setRC.tcl.
+  type: string
 TAPCELL_TCL:
   description: |
     Path to Endcap and Welltie cells file.
@@ -467,12 +476,6 @@ MAKE_TRACKS:
 IO_CONSTRAINTS:
   description: |
     File path to the IO constraints .tcl file. Also used for manual placement.
-  stages:
-    - floorplan
-POST_FLOORPLAN_TCL:
-  description: |
-    Specifies a Tcl script with commands to run after floorplan, before saving
-    2_1_floorplan.odb.
   stages:
     - floorplan
 IO_PLACER_H:
@@ -875,7 +878,8 @@ SYNTH_OPT_HIER:
     - synth
 VERILOG_TOP_PARAMS:
   description: |
-    Apply toplevel params (if exist).
+    Apply toplevel params (if exist). Passed in as a list of key value pairs
+    in tcl syntax; separated by spaces: PARAM1 VALUE1 PARAM2 VALUE2
   stages:
     - synth
 CORE_ASPECT_RATIO:
@@ -1006,12 +1010,9 @@ DFT_CLOCK_MIXING:
     - grt
 DFT_POLARITY_MODE:
   description: >
-    How scan architect handles rising-edge and falling-edge scan flops within
-    a scan chain. Pass-through to `set_dft_config -polarity_mode` (`mid` or
-    `strict`). `mid` allows mixed polarity per chain by stitching falling-edge
-    flops before rising-edge flops. `strict` forbids mixing polarities within
-    a chain, requiring separate chains when both polarities are present.
-  default: mid
+    How scan architect handles mixed clock-edge polarity within each chain.
+    Pass-through to `set_dft_config -polarity_mode` (`mid` or `strict`).
+  default: strict
   stages:
     - floorplan
     - grt
@@ -1437,14 +1438,6 @@ PRE_GLOBAL_ROUTE_TCL:
     Specifies a Tcl script with commands to run before global route.
   stages:
     - grt
-POST_GLOBAL_ROUTE_TCL:
-  description: |
-    Specifies a Tcl script with commands to run after the initial global route
-    succeeds (before repair_design / repair_timing). Useful for trial-routing
-    flows that need to modify the design, then incrementally route only the
-    modified nets.
-  stages:
-    - grt
 GLOBAL_ROUTE_ARGS:
   description: >
     Replaces default arguments for global route.
@@ -1560,14 +1553,14 @@ RTLMP_FENCE_UX:
   description: >
     Defines the upper right X coordinate for the global fence bounding box in
     microns.
-  default: 100000000.0
+  default: 0.0
   stages:
     - floorplan
 RTLMP_FENCE_UY:
   description: >
     Defines the upper right Y coordinate for the global fence bounding box in
     microns.
-  default: 100000000.0
+  default: 0.0
   stages:
     - floorplan
 RTLMP_ARGS:
@@ -1673,3 +1666,30 @@ MAX_REPAIR_TIMING_ITER:
     - floorplan
     - grt
     - place
+NUM_CORES:
+  description: >
+    Passed to `openroad -threads $(NUM_CORES)`, defaults to numbers
+    of cores in system as determined by system specific code in Makefile,
+    `nproc` is tried first.
+
+    OpenROAD does not limit itself to this number of cores across
+    OpenROAD running instances, which can lead to overprovisioning
+    in contexts such as bazel-orfs where there could be many
+    routing, or place jobs running at the same time.
+  stages:
+    - All stages
+KEEP_VARS:
+  description: >
+    Feature toggle to keep intermediate variables during the flow.
+    This is useful for the single-run flow, where all stages of the flow
+    are run in a single OpenROAD instance.
+  default: 0
+  stages:
+    - All stages
+WRITE_ODB_AND_SDC_EACH_STAGE:
+  description: >
+    Save out .sdc and .odb file after each stage, useful to disable
+    when using a single OpenROAD instance to run all stages of the flow.
+  stages:
+    - All stages
+  default: 1

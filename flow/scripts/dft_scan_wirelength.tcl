@@ -92,6 +92,12 @@ proc dft_collect_scan_nets_by_sigtype {} {
   set scan_nets {}
   foreach net [$block getNets] {
     if { [$net getSigType] == "SCAN" } {
+      # Some DFT flows pre-create scan I/O nets/ports, and OpenROAD may
+      # re-attach the port to a different net during stitching, leaving the
+      # original SCAN net empty. Skip such nets to avoid noisy reports.
+      if { [llength [$net getBTerms]] == 0 && [llength [$net getITerms]] == 0 } {
+        continue
+      }
       lappend scan_nets [$net getName]
     }
   }

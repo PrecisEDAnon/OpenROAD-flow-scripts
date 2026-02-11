@@ -124,7 +124,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     ap.add_argument("--max-imbalance", type=float, default=2.0)
     ap.add_argument("--clock-mixing", default="no_mix")
-    ap.add_argument("--polarity-mode", default="mid", choices=["mid", "strict"])
+    ap.add_argument("--polarity-mode", default="strict", choices=["mid", "strict"])
 
     ap.add_argument("--solver", choices=["HEURISTIC", "SCANOPT"], default="SCANOPT")
     ap.add_argument("--scanopt-time-limit", type=float, default=15.0)
@@ -267,4 +267,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

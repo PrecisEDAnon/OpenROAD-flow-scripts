@@ -2,11 +2,15 @@
 """
 ScanOpt-next (reference implementation).
 
-Reads a TSV describing scan cells and their (x,y) locations per chain and writes
+Reads a TSV describing scan cells and their pin locations per chain and writes
 an ordered scan sequence per chain.
 
 Input TSV (tab-separated):
-  chain_name  inst_name  x_dbu  y_dbu
+  (v2, preferred) chain_name  inst_name  in_x_dbu  in_y_dbu  out_x_dbu  out_y_dbu
+  (v1, legacy)    chain_name  inst_name  x_dbu  y_dbu
+
+Optional comment metadata (lines starting with '#'):
+  # chain <chain_name> begin <x> <y> end <x> <y>
 
 Output (whitespace-separated), one chain per line:
   chain_name inst0 inst1 inst2 ...
@@ -26,17 +30,19 @@ import numpy as np
 
 
 @dataclass(frozen=True)
-class Point:
+class Node:
     name: str
-    x: int
-    y: int
+    in_x: int
+    in_y: int
+    out_x: int
+    out_y: int
 
 
 def manhattan(a: Tuple[int, int], b: Tuple[int, int]) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def rotate_order_to_drop_worst_edge(points: List[Point], order: List[int]) -> List[int]:
+def rotate_order_to_drop_worst_edge(nodes: List[Node], order: List[int]) -> List[int]:
     """
     If endpoints are unconstrained, we can choose the path "break" freely.
 
@@ -49,9 +55,9 @@ def rotate_order_to_drop_worst_edge(points: List[Point], order: List[int]) -> Li
         return order
 
     def dist(i: int, j: int) -> int:
-        a = points[i]
-        b = points[j]
-        return abs(a.x - b.x) + abs(a.y - b.y)
+        a = nodes[i]
+        b = nodes[j]
+        return abs(a.out_x - b.in_x) + abs(a.out_y - b.in_y)
 
     closure = dist(order[-1], order[0])
     max_internal = -1
@@ -69,33 +75,47 @@ def rotate_order_to_drop_worst_edge(points: List[Point], order: List[int]) -> Li
 
     # Deterministic tie-break: pick the cut that yields the lexicographically
     # smallest new start cell name.
-    best = min(candidates, key=lambda k: points[order[k + 1]].name)
+    best = min(candidates, key=lambda k: nodes[order[k + 1]].name)
     return order[best + 1 :] + order[: best + 1]
 
 
-def choose_start(points: List[Point]) -> int:
-    # Lower-leftmost by x+y, tie-break by name for determinism.
+def choose_start(nodes: List[Node]) -> int:
+    # Lower-leftmost by in_x+in_y, tie-break by name for determinism.
     best_idx = 0
-    best_key = (points[0].x + points[0].y, points[0].name)
-    for idx, p in enumerate(points[1:], start=1):
-        key = (p.x + p.y, p.name)
+    best_key = (nodes[0].in_x + nodes[0].in_y, nodes[0].name)
+    for idx, p in enumerate(nodes[1:], start=1):
+        key = (p.in_x + p.in_y, p.name)
         if key < best_key:
             best_key = key
             best_idx = idx
     return best_idx
 
 
-def nearest_neighbor_order(points: List[Point]) -> List[int]:
-    n = len(points)
+def nearest_neighbor_order(
+    nodes: List[Node],
+    *,
+    begin: Tuple[int, int] | None,
+) -> List[int]:
+    n = len(nodes)
     if n <= 1:
         return list(range(n))
 
-    coords = np.empty((n, 2), dtype=np.int64)
-    for i, p in enumerate(points):
-        coords[i, 0] = p.x
-        coords[i, 1] = p.y
+    in_coords = np.empty((n, 2), dtype=np.int64)
+    out_coords = np.empty((n, 2), dtype=np.int64)
+    for i, node in enumerate(nodes):
+        in_coords[i, 0] = node.in_x
+        in_coords[i, 1] = node.in_y
+        out_coords[i, 0] = node.out_x
+        out_coords[i, 1] = node.out_y
 
-    start = choose_start(points)
+    if begin is None:
+        start = choose_start(nodes)
+    else:
+        bx, by = begin
+        d = np.abs(in_coords[:, 0] - bx) + np.abs(in_coords[:, 1] - by)
+        min_dist = int(d.min())
+        candidates = np.nonzero(d == min_dist)[0]
+        start = int(min(candidates, key=lambda i: nodes[int(i)].name))
     unvisited = np.ones(n, dtype=bool)
     order: List[int] = []
     cur = start
@@ -105,100 +125,153 @@ def nearest_neighbor_order(points: List[Point]) -> List[int]:
         if not unvisited.any():
             break
         idxs = np.nonzero(unvisited)[0]
-        dx = np.abs(coords[idxs, 0] - coords[cur, 0])
-        dy = np.abs(coords[idxs, 1] - coords[cur, 1])
+        dx = np.abs(out_coords[cur, 0] - in_coords[idxs, 0])
+        dy = np.abs(out_coords[cur, 1] - in_coords[idxs, 1])
         dist = dx + dy
-        cur = int(idxs[int(dist.argmin())])
+        min_dist = int(dist.min())
+        cand = idxs[np.nonzero(dist == min_dist)[0]]
+        cur = int(min(cand, key=lambda i: nodes[int(i)].name))
     return order
 
 
-def path_cost(points: List[Point], order: List[int]) -> int:
-    if len(order) <= 1:
+def path_cost(
+    nodes: List[Node],
+    order: List[int],
+    *,
+    begin: Tuple[int, int] | None,
+    end: Tuple[int, int] | None,
+) -> int:
+    if len(order) <= 0:
         return 0
     total = 0
+    if begin is not None:
+        b = nodes[order[0]]
+        total += abs(begin[0] - b.in_x) + abs(begin[1] - b.in_y)
     for a, b in zip(order[:-1], order[1:]):
-        total += manhattan((points[a].x, points[a].y), (points[b].x, points[b].y))
+        na = nodes[a]
+        nb = nodes[b]
+        total += abs(na.out_x - nb.in_x) + abs(na.out_y - nb.in_y)
+    if end is not None:
+        a = nodes[order[-1]]
+        total += abs(a.out_x - end[0]) + abs(a.out_y - end[1])
     return total
 
 
 def random_2opt(
-    points: List[Point],
+    nodes: List[Node],
     order: List[int],
     rng: np.random.Generator,
     iters: int,
+    *,
+    begin: Tuple[int, int] | None,
+    end: Tuple[int, int] | None,
 ) -> List[int]:
     n = len(order)
     if n < 4 or iters <= 0:
         return order
 
-    coords = np.empty((n, 2), dtype=np.int64)
-    for i, idx in enumerate(order):
-        p = points[idx]
-        coords[i, 0] = p.x
-        coords[i, 1] = p.y
-
-    def seg_dist(i: int, j: int) -> int:
-        return int(abs(coords[i, 0] - coords[j, 0]) + abs(coords[i, 1] - coords[j, 1]))
-
     best = order[:]
-    best_cost = path_cost(points, best)
+    best_cost = path_cost(nodes, best, begin=begin, end=end)
 
     for _ in range(iters):
         i = int(rng.integers(0, n - 3))
         j = int(rng.integers(i + 2, n - 1))
-        a, b = i, i + 1
-        c, d = j, j + 1
 
-        old = seg_dist(a, b) + seg_dist(c, d)
-        new = seg_dist(a, c) + seg_dist(b, d)
-        if new >= old:
-            continue
-
-        # Apply reversal of segment (b..c).
-        best[b : c + 1] = reversed(best[b : c + 1])
-        coords[b : c + 1] = coords[b : c + 1][::-1]
-        best_cost -= old - new
+        cand = best[:]
+        cand[i : j + 1] = reversed(cand[i : j + 1])
+        cand_cost = path_cost(nodes, cand, begin=begin, end=end)
+        if cand_cost < best_cost:
+            best = cand
+            best_cost = cand_cost
 
     return best
 
 
 def solve_chain(
     chain: str,
-    points: List[Point],
+    nodes: List[Node],
     rng: np.random.Generator,
     max_2opt_iters: int,
     enable_2opt: bool,
+    *,
+    begin: Tuple[int, int] | None,
+    end: Tuple[int, int] | None,
 ) -> List[str]:
-    if len(points) <= 2:
-        return [p.name for p in points]
+    if len(nodes) <= 2:
+        return [p.name for p in nodes]
 
-    order = nearest_neighbor_order(points)
+    order = nearest_neighbor_order(nodes, begin=begin)
 
     if enable_2opt and max_2opt_iters > 0:
         # Scale iterations sublinearly to avoid huge runtimes on big chains.
-        iters = min(max_2opt_iters, max(0, 20 * len(points)))
-        order = random_2opt(points, order, rng=rng, iters=iters)
+        iters = min(max_2opt_iters, max(0, 20 * len(nodes)))
+        order = random_2opt(nodes, order, rng=rng, iters=iters, begin=begin, end=end)
 
-    # Choose the best path break to avoid an obviously bad "jump" edge.
-    order = rotate_order_to_drop_worst_edge(points, order)
+    # Choose the best path break to avoid an obviously bad "jump" edge, but only
+    # when both endpoints are unconstrained.
+    if begin is None and end is None:
+        order = rotate_order_to_drop_worst_edge(nodes, order)
 
-    return [points[i].name for i in order]
+    return [nodes[i].name for i in order]
 
 
-def read_tsv(path: Path) -> Dict[str, List[Point]]:
-    chains: Dict[str, List[Point]] = {}
+def read_tsv(
+    path: Path,
+) -> Tuple[Dict[str, List[Node]], Dict[str, Tuple[int, int] | None], Dict[str, Tuple[int, int] | None]]:
+    chains: Dict[str, List[Node]] = {}
+    begins: Dict[str, Tuple[int, int] | None] = {}
+    ends: Dict[str, Tuple[int, int] | None] = {}
     with path.open("r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
-            if not line or line.startswith("#"):
+            if not line:
                 continue
+            if line.startswith("#"):
+                parts = line.split("\t")
+                if len(parts) >= 3 and parts[0] == "#" and parts[1] == "chain":
+                    chain = parts[2]
+                    i = 3
+                    while i + 2 < len(parts):
+                        key = parts[i]
+                        if key == "begin":
+                            begins[chain] = (int(parts[i + 1]), int(parts[i + 2]))
+                            i += 3
+                            continue
+                        if key == "end":
+                            ends[chain] = (int(parts[i + 1]), int(parts[i + 2]))
+                            i += 3
+                            continue
+                        i += 1
+                continue
+
             parts = line.split("\t")
-            if len(parts) != 4:
-                raise ValueError(f"Bad TSV line (expected 4 columns): {raw.rstrip()}")
-            chain, name, xs, ys = parts
-            p = Point(name=name, x=int(xs), y=int(ys))
-            chains.setdefault(chain, []).append(p)
-    return chains
+            if len(parts) == 4:
+                chain, name, xs, ys = parts
+                x = int(xs)
+                y = int(ys)
+                node = Node(name=name, in_x=x, in_y=y, out_x=x, out_y=y)
+                chains.setdefault(chain, []).append(node)
+                continue
+            if len(parts) == 6:
+                chain, name, in_xs, in_ys, out_xs, out_ys = parts
+                node = Node(
+                    name=name,
+                    in_x=int(in_xs),
+                    in_y=int(in_ys),
+                    out_x=int(out_xs),
+                    out_y=int(out_ys),
+                )
+                chains.setdefault(chain, []).append(node)
+                continue
+
+            raise ValueError(
+                f"Bad TSV line (expected 4 or 6 columns, got {len(parts)}): {raw.rstrip()}"
+            )
+
+    for chain in chains.keys():
+        begins.setdefault(chain, None)
+        ends.setdefault(chain, None)
+    return chains, begins, ends
 
 
 def write_solution(path: Path, solution: Dict[str, List[str]]) -> None:
@@ -221,17 +294,19 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--disable-2opt", action="store_true")
     args = ap.parse_args(argv)
 
-    chains = read_tsv(args.input)
+    chains, begins, ends = read_tsv(args.input)
     rng = np.random.default_rng(args.seed)
 
     solution: Dict[str, List[str]] = {}
-    for chain, points in chains.items():
+    for chain, nodes in chains.items():
         solution[chain] = solve_chain(
             chain,
-            points,
+            nodes,
             rng=rng,
             max_2opt_iters=args.max_2opt_iters,
             enable_2opt=not args.disable_2opt,
+            begin=begins.get(chain),
+            end=ends.get(chain),
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
