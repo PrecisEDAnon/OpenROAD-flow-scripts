@@ -2,11 +2,19 @@
 
 This is a living worklog for DFT scan insertion + scan-chain stitching/optimization in ORFS. For historical comparisons, **OpenROAD `7bc521f36a` is treated as the “baseline DFT”** (often yields 0 chains due to scan-pin recognition failures). All work here assumes a **vanilla OpenSTA** requirement (no `src/sta` parser changes required).
 
-## Workspace snapshot (2026-02-07)
+## Workspace snapshot (2026-02-12)
 
-- ORFS (this repo): `e3fd2753805f` (dirty)
-- OpenROAD submodule: `9d5965b56818` (dirty; local patches under `tools/OpenROAD/src/dft/`)
-- OpenSTA submodule: `d7cb9be1ca02` (vanilla)
+Reproducible “clean DFT” baselines (PrecisEDAnon GitHub):
+- OpenROAD: `OpenROAD-clean-DFT` @ `b64941f4c9` (scan_enable buffering + strict polarity default)
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `b64941f4c9`)
+- OpenSTA: `d7cb9be1` (vanilla)
+
+Active dev branches (PrecisEDAnon GitHub):
+- OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `9b94d649ad`
+- ORFS: `ORFS-toggle-rebased-DFT`
+
+Local note:
+- This repo’s working tree may be dirty; for reproducible DFT behavior (especially `buffer_scan_enable`), prefer the clean baselines above.
 
 ## Goal / Scope
 
@@ -20,12 +28,95 @@ This is a living worklog for DFT scan insertion + scan-chain stitching/optimizat
   - **fixed DFT** (actually produces scan flops + stitched chains),
   - using QoR proxies and a scan-chain “TSP-like” cost metric.
 
-## Status (as of 2026-02-07)
+## Status (as of 2026-02-12)
 
-- ORFS hooks support `DFT_ENABLE=1` end-to-end: scan replace, scan port creation, optional scan port placement, chain stitching, and reporting.
-- `execute_dft_plan` supports multi-chain planning with hard feasibility checks (`chain_count`, `max_length`, `max_imbalance`) and a constraints file for chain naming/endpoints/grouping/ordering/exclusion.
-- Multi-chain “big jumps” are reduced by (a) including Begin/End costs in ordering, (b) selecting between K-means vs X/Y/Hilbert sweep partitions using a “worst within-chain Manhattan diameter” objective (tie-break by worst X/Y gap), and (c) a stronger `SCANOPT` long-edge penalty + worst-edge local moves (including direction-preserving 3-opt segment swap).
-- Regressions + visualization live under `dft_artifacts/` plus convenience plots under `new_highlighter/` and `highlighter_flattened/`.
+- ORFS hooks support `DFT_ENABLE=1` end-to-end: `scan_replace`, scan port creation, optional scan port placement, chain stitching, and reporting.
+- OpenROAD scan ordering:
+  - `PLACEMENT` metric uses consistent pin-to-pin Manhattan distance (scan-out pin → next scan-in pin).
+  - `SCANOPT` solver integrates UCLA ScanOptpack (`UCLApack-3-010411`), and the repo-root UCLApack sources match OpenROAD’s vendored copy used by DFT.
+- For A/B comparisons, fix `DFT_SCANOPT_SEED` and increase `DFT_SCANOPT_TIME_LIMIT` to reduce run-to-run variance from tight time budgets.
+- ORFS scan-chain tooling (cost + plotting + bundled external solver I/O) uses pin-level asymmetric costs (scan-out → scan-in) and includes Begin/End terms when endpoints are known.
+- Scan enable fanout control is handled in OpenROAD as `buffer_scan_enable`; ORFS calls it by default via `DFT_BUFFER_SCAN_ENABLE=1` (falls back to legacy `insert_buffer` if the command is unavailable).
+- `polarity_mode=strict` is the default (so mixed-edge flops are split across chains unless explicitly overridden).
+- ORFS `final_report.tcl` no longer hard-requires `orfs_write_db` (falls back to `write_db`), avoiding fork regressions.
+- When `DFT_SCAN_ORDER_CONSTRAINTS_FILE` is set, ORFS keeps OpenROAD’s ordering (does not apply external `scanopt_next` reorder) so groups/paths/before/fixed_edge constraints are preserved.
+- Verification smoke tests completed:
+  - ORFS `nangate45/gcd` runs end-to-end through `finish` with `DFT_ENABLE=1` on `ORFS-clean-DFT`.
+  - “DFT-only” planning on a pre-done `sky130hd/jpeg` placement validates with 0 broken links (including a multi-chain run).
+  - `dft-verifier/DFTRepro` outputs were backed up and regenerated cleanly; prior invalid pin placement issues were traced to harness pin/endpoints setup and fixed.
+
+## Verification (quick sanity)
+
+### 0) Confirm the OpenROAD binary you are using
+
+In this workstream there are often multiple OpenROAD builds in play. For DFT runs, the minimal sanity check is that your OpenROAD build has Python enabled and exposes the DFT commands you expect.
+
+Example:
+
+```tcl
+# check_dft.tcl
+puts "buffer_scan_enable: [info commands buffer_scan_enable]"
+puts "write_scandef: [info commands write_scandef]"
+exit
+```
+
+Run with:
+
+```bash
+$OPENROAD_EXE -exit check_dft.tcl
+```
+
+### 1) ORFS end-to-end smoke test (Nangate45 `gcd`)
+
+```bash
+make -C flow DESIGN_CONFIG=./designs/nangate45/gcd/config.mk FLOW_VARIANT=dft_gcd_smoke DFT_ENABLE=1 finish
+```
+
+### 2) “DFT-only” sanity on an existing `sky130hd/jpeg` placement (do not re-run the full flow)
+
+Single-chain planning + validation:
+
+```bash
+python3 flow/util/scan_chain_validate.py \
+  --odb flow/results/sky130hd/jpeg/jpeg_real1_fresh_20260209/3_5_place_dp.odb \
+  --openroad "$OPENROAD_EXE" \
+  --liberty flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib \
+  --sdc flow/results/sky130hd/jpeg/jpeg_real1_fresh_20260209/3_place.sdc \
+  --scan-replace --execute-dft-plan --ensure-ports
+```
+
+Multi-chain planning + validation:
+
+```bash
+python3 flow/util/scan_chain_validate.py \
+  --odb flow/results/sky130hd/jpeg/jpeg_real1_fresh_20260209/3_5_place_dp.odb \
+  --openroad "$OPENROAD_EXE" \
+  --liberty flow/platforms/sky130hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib \
+  --sdc flow/results/sky130hd/jpeg/jpeg_real1_fresh_20260209/3_place.sdc \
+  --max-chains 4 --max-length 1200 \
+  --scan-replace --execute-dft-plan --ensure-ports --auto-chains
+```
+
+### 3) `dft-verifier/DFTRepro` harness (packaged DB)
+
+Location:
+- `dft-verifier/DFTRepro/` (OpenROAD Python-based harness atop a packaged `db/`).
+- Note: in this ORFS checkout, `dft-verifier/` may be a local/untracked workspace folder (not part of upstream ORFS).
+
+Backups:
+- Existing prior outputs (other OpenROAD variants) are preserved under `dft-verifier/DFTRepro/backups/`.
+- Most recent backup during this work: `dft-verifier/DFTRepro/backups/20260212_072356/`.
+
+Regenerate using a specific OpenROAD build:
+
+```bash
+cd dft-verifier/DFTRepro
+OPENROAD_EXE="$OPENROAD_EXE" ./run_all.sh
+```
+
+Notes:
+- The harness now clamps scan ports to the die area and avoids `(0,0)` endpoint collisions (which previously caused `GRT-0080 Invalid pin placement`).
+- The harness calls `buffer_scan_enable` (when available) to avoid GRT issues on very high scan_enable fanout.
 
 ## Baselines, Branches, and Key Commits (history)
 
@@ -39,8 +130,8 @@ This is a living worklog for DFT scan insertion + scan-chain stitching/optimizat
 - Older variant (kept for history): `orfs-dft-scan-with-opensta`
   - `5d3e1e243c`
 
-- Current base used in this workspace: `OpenROAD-clean-DFT-next`
-  - `9d5965b56818` + local patches (see `git -C tools/OpenROAD status`)
+- Clean DFT baseline (PrecisEDAnon): `OpenROAD-clean-DFT` @ `b64941f4c9`
+- Active dev baseline (PrecisEDAnon): `OpenROAD-toggle-rebased-DFT` @ `9b94d649ad`
 
 ### OpenSTA submodule (`tools/OpenROAD/src/sta`)
 
@@ -119,6 +210,10 @@ Implemented in `tools/OpenROAD/src/dft/src/config/ScanArchitectConfig.cpp` (see 
 - Exclusions:
   - exact: `exclude <inst/group...>`
   - patterns: `exclude_instance_pattern <glob...>` (alias: `exclude_name_pattern`) and `exclude_master_pattern <glob...>` (aliases: `exclude_master`, `exclude_master_patterns`) (`*`/`?` supported)
+
+Name escaping (important):
+- Instance tokens in constraints must match OpenDB instance names exactly. In DEF/ODB, bus indices are typically escaped (e.g. `foo\\[0\\]`), so a Verilog-style token like `foo[0]` will not match.
+- For `inst/pin` terms, escape literal slashes as `\\/` (OpenROAD treats unescaped `/` as the inst/pin separator).
 
 Planner sanity:
 - If the constraints file defines chain names, their count must match the DFT plan’s total chain count (after domain splitting), otherwise `execute_dft_plan` errors instead of silently producing fewer chains.
@@ -252,7 +347,7 @@ Routing robustness:
 
 ### OpenROAD executables used
 
-- OpenROAD under test: `tools/OpenROAD/build/bin/openroad` (build of `tools/OpenROAD`, currently `9d5965b56818` + local patches)
+- OpenROAD under test: `$(pwd)/tools/OpenROAD/build/bin/openroad` (build of the `tools/OpenROAD` submodule pinned by your ORFS checkout; use `ORFS-clean-DFT` for the clean baseline pinned to `b64941f4c9`)
 - Baseline OpenROAD (historical): build OpenROAD at `7bc521f36a` (ideally in a separate clone/worktree/build dir) and point `OPENROAD_EXE` at that binary
   - Example build (separate build dir): `git -C tools/OpenROAD checkout 7bc521f36a && cmake -S tools/OpenROAD -B tools/OpenROAD/build_7bc521 && cmake --build tools/OpenROAD/build_7bc521 -j"$(nproc)"`
 
@@ -533,7 +628,7 @@ For a placed `*.odb` + `*.sdc` where scan flops already exist, `flow/util/dft_pr
 Example (ibex, Nangate45):
 - `python3 flow/util/dft_preplaced_regress.py --openroad tools/OpenROAD/build/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/3_place.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/3_place.sdc --scan-order-metric PIN_TO_NET --scan-order-solver SCANOPT --scanopt-rounds 500000 --scanopt-time-limit 600 --chain-counts 4 --max-imbalances 30 --out-prefix dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/preplaced_ibex_p2n --out-json dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/summary.json`
 
-Current regression results (OpenROAD `9d5965b56818` + local patches; `PIN_TO_NET` + `SCANOPT`; `scanopt_time_limit=600` total budget):
+Regression results (2026-02-07 snapshot; OpenROAD `9d5965b56818` + local patches; `PIN_TO_NET` + `SCANOPT`; `scanopt_time_limit=600` total budget):
 
 | design | chains | max_imbalance | max_step (um) | p99_step (um) | run |
 | --- | ---: | ---: | ---: | ---: | --- |

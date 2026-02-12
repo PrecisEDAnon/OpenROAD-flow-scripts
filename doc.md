@@ -72,8 +72,15 @@ Validation:
 - Preplaced regress: `python3 flow/util/dft_preplaced_regress.py ...` (see `doc-DFT.md`)
 - Plots: `python3 highlighter.py --def ... --verilog ... --output-plot ...` (dashed black edges are scan I/O port→chain-endpoint “stems”, not intra-chain edges; use `flow/util/scan_chain_plot.py --no-io-edges` to hide them)
 
-Status (2026-02-07):
-- Multi-chain “big jumps” reduced via Hilbert/axis sweep partition selection + SCANOPT worst-edge direction-preserving 3-opt; k=22 example plots are in `dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/` (see `doc-DFT.md`).
+Status (2026-02-12):
+- Clean baselines are pushed and reproducible:
+  - OpenROAD: `OpenROAD-clean-DFT` @ `b64941f4c9` (adds `buffer_scan_enable`, defaults `polarity_mode=strict`)
+  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `b64941f4c9`, guards `orfs_write_db`, prefers local `tools/OpenROAD/build/bin/openroad`)
+- `UCLApack-3-010411` (repo root) matches OpenROAD’s vendored copy under `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411` for the ScanOpt sources used by DFT.
+- ORFS end-to-end DFT smoke test passes: `nangate45/gcd` completes `finish` with `DFT_ENABLE=1` on `ORFS-clean-DFT`.
+- “DFT-only” sanity on a pre-done `sky130hd/jpeg` placement passes: `scan_replace + execute_dft_plan` validates with 0 broken links (including a 4-chain run).
+- `dft-verifier/DFTRepro`: backed up old outputs, fixed harness pin placement + endpoint constraints + scan_enable buffering; suite regenerates without the prior `GRT-0080 Invalid pin placement` failures.
+- Multi-chain “big jumps” remain reduced via Hilbert/axis sweep partition selection + SCANOPT worst-edge direction-preserving 3-opt (see `dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/`).
 
 ---
 
