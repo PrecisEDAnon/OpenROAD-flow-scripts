@@ -68,6 +68,14 @@ ifeq (,$(strip $(NUM_CORES)))
 endif
 export NUM_CORES
 
+# Keep OpenMP parallelism consistent with NUM_CORES. Some OpenROAD
+# components (including surrogate optimization) use OpenMP internally and
+# can otherwise default to using all host cores, regardless of -threads.
+export OMP_NUM_THREADS ?= $(NUM_CORES)
+export OPENBLAS_NUM_THREADS ?= $(NUM_CORES)
+export MKL_NUM_THREADS ?= $(NUM_CORES)
+export BLIS_NUM_THREADS ?= $(NUM_CORES)
+
 #-------------------------------------------------------------------------------
 # setup all commands used within this flow
 export PYTHON_EXE ?= $(shell command -v python3)

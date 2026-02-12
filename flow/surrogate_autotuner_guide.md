@@ -92,6 +92,7 @@ they map onto ORFS variables for the optional validation runs:
 | `core_utilization` | `CORE_UTILIZATION` | int | `0..100` (%); surrogate model effectively clamps to about `20..99` |
 | `core_aspect_ratio` | `CORE_ASPECT_RATIO` | float | `> 0`; surrogate model effectively clamps to about `0.2..5.0` |
 | `tns_end_percent` | `TNS_END_PERCENT` | int | `0..100` |
+| `place_density` | `PLACE_DENSITY` | float | `0.0..1.0` |
 | `global_padding` | `CELL_PAD_IN_SITES_GLOBAL_PLACEMENT` | int | `>= 0` (sites) |
 | `detail_padding` | `CELL_PAD_IN_SITES_DETAIL_PLACEMENT` | int | `>= 0` (sites) |
 | `enable_dpo` | `ENABLE_DPO` | binary | `0` or `1` |
@@ -103,9 +104,16 @@ they map onto ORFS variables for the optional validation runs:
 
 Notes:
 
-- `clock_period` is handled **synthesis-aware** when present in the space:
-  - the wrappers sweep clocks by rewriting `SDC_FILE` and re-synthesizing per clock
-  - surrogate tuning itself freezes `clock_period` (avoids “single-netlist clock mismatch”)
+- `clock_period` triggers a clock-aware mode in `surrogate_autotune`:
+  - `SURROGATE_CLOCK_MODE=synth_sweep` (default): rewrite `SDC_FILE` + re-synthesize per clock; `clock_period` is frozen inside each per-clock `surrogate_tune` run.
+  - `SURROGATE_CLOCK_MODE=single_netlist`: tune `clock_period` on one synthesized netlist (no per-clock re-synthesis); validation still rewrites `SDC_FILE` per candidate.
+- Clock selection for `SURROGATE_CLOCK_MODE=synth_sweep`:
+  - `SURROGATE_CLOCKS="..."` overrides everything.
+  - Otherwise you can specify `SURROGATE_CLOCK_MIN/MAX/STEP`.
+  - Otherwise it auto-picks clocks using `SURROGATE_CLOCK_STRATEGY=space|factors` (default: `space` for ECP if `clock_period` exists in the space) and `SURROGATE_CLOCK_SWEEP_N` points.
+    - If `clock_period.step` is `0`/omitted, `space` uses an evenly spaced grid; it does **not** enumerate millions of clock values.
+- `SURROGATE_TIME_BUDGET_S` is per `surrogate_tune` call; in `synth_sweep` total optimization time is roughly `(#clocks × SURROGATE_TIME_BUDGET_S)`.
+  - Optionally set `SURROGATE_TIME_BUDGET_S_TOTAL` to divide a total budget evenly across the clock sweep.
 - `density_margin_addon` maps to `PLACE_DENSITY_LB_ADDON`, which overrides `PLACE_DENSITY` in ORFS when set.
 - Routing adjust knobs use a simple split: first two routing layers get `PIN_LAYER_ADJUST`, and the rest get `ABOVE_LAYER_ADJUST` (fallback is the platform default when unset).
 
@@ -147,8 +155,11 @@ make -C flow surrogate_autotune DESIGN_CONFIG=designs/<platform>/<design>/config
   SURROGATE_SAMPLES=500000 \
   SURROGATE_TOP_N=10 \
   SURROGATE_VALIDATE=1 \
-  SURROGATE_VALIDATE_N=20
+  SURROGATE_VALIDATE_N=18 \
+  SURROGATE_VALIDATE_JOBS=18
 ```
+
+`SURROGATE_VALIDATE_JOBS` controls parallel validation jobs (default: `SURROGATE_VALIDATE_N`).
 
 ## Using a separate surrogate-enabled OpenROAD binary
 
@@ -178,6 +189,20 @@ Notes:
 
 - Gains are vs the design’s baseline (`flow/logs/<platform>/<design>/base/...`); baseline is always a candidate, so gains are non-negative by construction.
 - These runs only cover `routed_wirelength` and `effective_clock_period` at `600s`. Power/area at this budget are not yet characterized on disk.
+- For ECP runs with `SURROGATE_CLOCK_MODE=synth_sweep`, `SURROGATE_TIME_BUDGET_S` is **per clock**.
+
+## Random-search baseline (best-of-N)
+
+To compare against a simple “best of N random perturbations around baseline”:
+
+```bash
+python3 flow/scripts/random_baseline.py \
+  --platforms asap7,nangate45,sky130hd \
+  --designs aes,ibex,jpeg \
+  --objectives ecp,wl,power,instance_area,area \
+  --validate-n 18 --validate-jobs 18 \
+  --make-target report
+```
 
 ## Troubleshooting
 

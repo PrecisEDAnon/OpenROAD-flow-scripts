@@ -9,7 +9,11 @@ if { [llength [info commands surrogate_optimize]] == 0 } {
 }
 
 erase_non_stage_variables floorplan
-load_design 1_synth.v 1_synth.sdc
+if { [file exists [file join $::env(RESULTS_DIR) 1_synth.odb]] } {
+  load_design 1_synth.odb 1_synth.sdc
+} else {
+  load_design 1_synth.v 1_synth.sdc
+}
 
 set space_file ""
 if { [env_var_exists_and_non_empty SURROGATE_SPACE_FILE] } {
@@ -68,13 +72,33 @@ if { [env_var_exists_and_non_empty SURROGATE_SHRINK] } {
   set shrink $::env(SURROGATE_SHRINK)
 }
 
+set portfolio 0
+if { [env_var_exists_and_non_empty SURROGATE_PORTFOLIO] } {
+  set portfolio $::env(SURROGATE_PORTFOLIO)
+}
+
+set portfolio_shrink 0.25
+if { [env_var_exists_and_non_empty SURROGATE_PORTFOLIO_SHRINK] } {
+  set portfolio_shrink $::env(SURROGATE_PORTFOLIO_SHRINK)
+}
+
 set time_budget_s ""
 if { [env_var_exists_and_non_empty SURROGATE_TIME_BUDGET_S] } {
   set time_budget_s $::env(SURROGATE_TIME_BUDGET_S)
 }
 
+set optimize_threads ""
+if { [env_var_exists_and_non_empty SURROGATE_THREADS] } {
+  set optimize_threads $::env(SURROGATE_THREADS)
+} else {
+  if { [env_var_exists_and_non_empty NUM_CORES] } {
+    set optimize_threads $::env(NUM_CORES)
+  }
+}
+
 set freeze "clock_period"
-if { [env_var_exists_and_non_empty SURROGATE_FREEZE] } {
+# Allow explicitly disabling freeze by setting SURROGATE_FREEZE="".
+if { [info exists ::env(SURROGATE_FREEZE)] } {
   set freeze $::env(SURROGATE_FREEZE)
 }
 
@@ -108,6 +132,8 @@ puts "  noise:      $noise"
 puts "  fidelity:   $fidelity"
 puts "  multi_fid:  $multi_fidelity"
 puts "  shrink:     $shrink"
+puts "  portfolio:  $portfolio"
+puts "  p_shrink:   $portfolio_shrink"
 puts "  budget_s:   $time_budget_s"
 puts "  freeze:     $freeze"
 puts "  calib_ws:   $calibrate_ws"
@@ -139,22 +165,59 @@ if { $multi_fidelity != 0 } {
   lappend extra_args -multi_fidelity
   lappend extra_args -shrink $shrink
 }
+if { $portfolio != 0 } {
+  lappend extra_args -portfolio
+  lappend extra_args -portfolio_shrink $portfolio_shrink
+}
 if { $time_budget_s != "" } {
   lappend extra_args -time_budget_s $time_budget_s
 }
 
-set result [surrogate_optimize \
-  -builtin \
-  -space_file $space_file \
-  -objective $objective \
-  -minimize \
-  -samples $samples \
-  -top_n $top_n \
-  -seed $seed \
-  -noise $noise \
-  {*}$extra_args \
-  -format simple \
-  -output $output_file \
-  -include_features]
+  set base_args [list \
+    -builtin \
+    -space_file $space_file \
+    -objective $objective \
+    -minimize \
+    -samples $samples \
+    -top_n $top_n \
+    -seed $seed \
+    -noise $noise \
+    -format simple \
+    -output $output_file \
+    -include_features]
 
-puts $result
+  if { $optimize_threads != "" } {
+    lappend base_args -threads $optimize_threads
+  }
+
+  set args [concat $base_args $extra_args]
+
+  set result ""
+  set err ""
+  set ok [expr {![catch { set result [surrogate_optimize {*}$args] } err]}]
+
+  if { !$ok && $portfolio != 0 } {
+    if { [string match "*Unknown option: -portfolio*" $err] || [string match "*Unknown option: -portfolio_shrink*" $err] } {
+      puts "WARNING: surrogate_optimize does not support -portfolio; retrying without portfolio."
+      set extra_args_no_portfolio {}
+      for {set i 0} {$i < [llength $extra_args]} {incr i} {
+        set a [lindex $extra_args $i]
+        if { $a == "-portfolio" } {
+          continue
+        }
+        if { $a == "-portfolio_shrink" } {
+          incr i
+          continue
+        }
+        lappend extra_args_no_portfolio $a
+      }
+      set args [concat $base_args $extra_args_no_portfolio]
+      set ok [expr {![catch { set result [surrogate_optimize {*}$args] } err]}]
+    }
+  }
+
+  if { !$ok } {
+    error $err
+  }
+
+  puts $result
