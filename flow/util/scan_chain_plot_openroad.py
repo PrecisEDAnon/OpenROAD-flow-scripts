@@ -69,12 +69,25 @@ def _inst_xy(inst) -> Tuple[int, int]:
 
 
 def _bterm_xy(bterm) -> Tuple[int, int]:
+    if hasattr(bterm, "getFirstPinLocation"):
+        try:
+            ok, x, y = bterm.getFirstPinLocation()
+            if ok:
+                return int(x), int(y)
+        except Exception:
+            pass
     return _bbox_center_xy(bterm.getBBox())
 
 
 def _iterm_xy(iterm) -> Tuple[int, int]:
-    bbox = iterm.getBBox()
-    return int(bbox.xMin()), int(bbox.yMin())
+    if hasattr(iterm, "getAvgXY"):
+        try:
+            ok, x, y = iterm.getAvgXY()
+            if ok:
+                return int(x), int(y)
+        except Exception:
+            pass
+    return _bbox_center_xy(iterm.getBBox())
 
 
 def _node_id(kind: str, name: str) -> str:

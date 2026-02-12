@@ -854,6 +854,15 @@ proc dft_scanopt_next_reorder {chain_cells_by_name {tag "pregrt"}} {
     return $chain_cells_by_name
   }
 
+  # scanopt_next is an external reorder step and does not currently interpret
+  # OpenROAD's scan-order constraints (groups/paths/fixed_edge/before/etc).
+  # If the user provided a constraints file, keep OpenROAD's ordering.
+  set constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
+  if { $constraints_file != "" } {
+    puts "DFT: WARNING: DFT_SCAN_SOLVER=scanopt_next ignores DFT_SCAN_ORDER_CONSTRAINTS_FILE; using OpenROAD order"
+    return $chain_cells_by_name
+  }
+
   set out_dir "/tmp"
   if { [info exists ::env(REPORTS_DIR)] && $::env(REPORTS_DIR) != "" } {
     set out_dir $::env(REPORTS_DIR)
