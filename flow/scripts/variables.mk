@@ -104,7 +104,13 @@ export TIME_CMD
 ifneq (${IN_NIX_SHELL},)
   export OPENROAD_EXE ?= $(shell command -v openroad)
 else
-  export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/install/OpenROAD/bin/openroad)
+  # Prefer a local submodule build if present; fall back to the installed binary.
+  export OPENROAD_EXE ?= $(abspath $(FLOW_HOME)/../tools/OpenROAD/build/bin/openroad)
+  ifeq ($(origin OPENROAD_EXE),file)
+    ifeq (,$(shell test -x $(OPENROAD_EXE) && echo "true"))
+      export OPENROAD_EXE := $(abspath $(FLOW_HOME)/../tools/install/OpenROAD/bin/openroad)
+    endif
+  endif
 endif
 ifneq (${IN_NIX_SHELL},)
   export OPENSTA_EXE ?= $(shell command -v sta)

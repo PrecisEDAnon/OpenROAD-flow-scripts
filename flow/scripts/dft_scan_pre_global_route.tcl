@@ -697,6 +697,28 @@ proc dft_buffer_scan_enable_net {} {
     return
   }
 
+  if { [info commands buffer_scan_enable] != "" } {
+    set inserted 0
+    if { [catch {
+      set inserted [buffer_scan_enable -buffer_cell $buffer_cell -max_fanout $max_fanout -max_levels $max_levels]
+    } err] } {
+      puts "DFT: WARNING: buffer_scan_enable failed: $err"
+      return
+    }
+    if { $inserted > 0 } {
+      puts "DFT: inserted $inserted buffer(s) for scan_enable"
+      catch { detailed_placement }
+    }
+    return
+  }
+
+  if { [info commands insert_buffer] == "" } {
+    puts "DFT: WARNING: no buffer_scan_enable/insert_buffer command available; skipping scan_enable buffering"
+    return
+  }
+
+  puts "DFT: WARNING: using legacy insert_buffer for scan_enable buffering (buffer_scan_enable not available)"
+
   set total_inserted 0
 
   for { set level 0 } { $level < $max_levels } { incr level } {
