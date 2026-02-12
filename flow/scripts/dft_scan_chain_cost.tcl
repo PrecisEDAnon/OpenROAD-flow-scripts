@@ -222,9 +222,13 @@ proc dft_parse_scandef_chains {path} {
     }
 
     if { $in_ordered } {
-      set inst_name [lindex $line 0]
-      if { $inst_name != "" } {
-        dict lappend out $current cells $inst_name
+      # Preserve literal backslashes in instance names (e.g., "\[3\]" from DEF).
+      # Do not use list parsing (`lindex`) here because it treats backslashes as
+      # escapes and will drop them, breaking `$block findInst`.
+      if { [regexp {^(\S+)} $line -> inst_name] } {
+        dict update out $current chain {
+          dict lappend chain cells $inst_name
+        }
       }
     }
   }
@@ -249,7 +253,9 @@ proc dft_parse_report_dft_plan_verbose_chains {} {
       continue
     }
     if { [regexp {^\s+([^\s]+)} $line -> token] } {
-      dict lappend out $current cells $token
+      dict update out $current chain {
+        dict lappend chain cells $token
+      }
     }
   }
   return $out
@@ -414,4 +420,3 @@ proc dft_report_scan_chain_cost {{tag "final"}} {
 
   puts "DFT: scan chain cost ($tag): total=${total_cost_um}um, chains=$chain_count, imbalance=${imbalance_percent}%, max_step=${max_step_um}um"
 }
-

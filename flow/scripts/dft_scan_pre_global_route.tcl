@@ -636,7 +636,9 @@ proc dft_mark_scan_nets_dont_touch {} {
       set net_name [$net getName]
       if { ($enable_net_name != "" && $net_name == $enable_net_name) \
         || [string match "scan_enable_*" $net_name] \
-        || [string match "dft_scan_enable_net*" $net_name] } {
+        || [string match "dft_scan_enable_net*" $net_name] \
+        || [string match "scan_in_*" $net_name] \
+        || [string match "scan_out_*" $net_name] } {
         continue
       }
       $net setDoNotTouch true
@@ -694,6 +696,28 @@ proc dft_buffer_scan_enable_net {} {
     puts "DFT: WARNING: no db block found; skipping scan_enable buffering"
     return
   }
+
+  if { [info commands buffer_scan_enable] != "" } {
+    set inserted 0
+    if { [catch {
+      set inserted [buffer_scan_enable -buffer_cell $buffer_cell -max_fanout $max_fanout -max_levels $max_levels]
+    } err] } {
+      puts "DFT: WARNING: buffer_scan_enable failed: $err"
+      return
+    }
+    if { $inserted > 0 } {
+      puts "DFT: inserted $inserted buffer(s) for scan_enable"
+      catch { detailed_placement }
+    }
+    return
+  }
+
+  if { [info commands insert_buffer] == "" } {
+    puts "DFT: WARNING: no buffer_scan_enable/insert_buffer command available; skipping scan_enable buffering"
+    return
+  }
+
+  puts "DFT: WARNING: using legacy insert_buffer for scan_enable buffering (buffer_scan_enable not available)"
 
   set total_inserted 0
 
@@ -852,6 +876,15 @@ proc dft_scanopt_next_reorder {chain_cells_by_name {tag "pregrt"}} {
     return $chain_cells_by_name
   }
 
+  # scanopt_next is an external reorder step and does not currently interpret
+  # OpenROAD's scan-order constraints (groups/paths/fixed_edge/before/etc).
+  # If the user provided a constraints file, keep OpenROAD's ordering.
+  set constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
+  if { $constraints_file != "" } {
+    puts "DFT: WARNING: DFT_SCAN_SOLVER=scanopt_next ignores DFT_SCAN_ORDER_CONSTRAINTS_FILE; using OpenROAD order"
+    return $chain_cells_by_name
+  }
+
   set out_dir "/tmp"
   if { [info exists ::env(REPORTS_DIR)] && $::env(REPORTS_DIR) != "" } {
     set out_dir $::env(REPORTS_DIR)
@@ -861,15 +894,76 @@ proc dft_scanopt_next_reorder {chain_cells_by_name {tag "pregrt"}} {
   set out_file [file join $out_dir "dft_scanopt_next_${tag}_${stamp}.out"]
 
   set fh [open $in_file w]
-  foreach chain_name [dict keys $chain_cells_by_name] {
+  puts $fh "# schema\t2"
+  puts $fh "# columns\tchain_name\tinst_name\tin_x\tin_y\tout_x\tout_y"
+
+  # Use the same chain ordering as stitching so we can map ordinal -> scan_in/out_N.
+  set chain_names {}
+  if { [info exists ::dft_chain_names_in_order] && [llength $::dft_chain_names_in_order] > 0 } {
+    set chain_names $::dft_chain_names_in_order
+  } else {
+    set chain_names [lsort -ascii [dict keys $chain_cells_by_name]]
+  }
+
+  set ordinal 0
+  foreach chain_name $chain_names {
+    if { ![dict exists $chain_cells_by_name $chain_name] } {
+      incr ordinal
+      continue
+    }
+
+    # Emit per-chain endpoint coordinates (if available) so solvers can include
+    # begin/end terms (Hamiltonian path, not a cycle).
+    set in_name [dft_scan_in_name $ordinal]
+    set out_name [dft_scan_out_name $ordinal]
+    set in_term [dft_resolve_endpoint_term $in_name INPUT]
+    set out_term [dft_resolve_endpoint_term $out_name OUTPUT]
+
+    set meta [list "# chain" $chain_name]
+    if { $in_term != "NULL" && ![catch { lassign [$in_term getFirstPinLocation] ok x y } err] && $ok } {
+      lappend meta "begin" $x $y
+    } elseif { $in_term != "NULL" && ![catch { lassign [$in_term getAvgXY] ok x y } err] && $ok } {
+      lappend meta "begin" $x $y
+    }
+    if { $out_term != "NULL" && ![catch { lassign [$out_term getFirstPinLocation] ok x y } err] && $ok } {
+      lappend meta "end" $x $y
+    } elseif { $out_term != "NULL" && ![catch { lassign [$out_term getAvgXY] ok x y } err] && $ok } {
+      lappend meta "end" $x $y
+    }
+    if { [llength $meta] > 2 } {
+      puts $fh [join $meta "\t"]
+    }
+
     foreach inst_name [dict get $chain_cells_by_name $chain_name] {
       set inst [$block findInst $inst_name]
       if { $inst == "NULL" } {
         continue
       }
-      lassign [$inst getLocation] x y
-      puts $fh "${chain_name}\t${inst_name}\t${x}\t${y}"
+
+      set fallback_xy [$inst getLocation]
+      lassign $fallback_xy fx fy
+
+      set in_iterm [dft_scan_get_in_iterm $inst]
+      set out_iterm [dft_scan_get_out_iterm $inst]
+
+      set in_x $fx
+      set in_y $fy
+      if { $in_iterm != "NULL" && ![catch { lassign [$in_iterm getAvgXY] ok x y } err] && $ok } {
+        set in_x $x
+        set in_y $y
+      }
+
+      set out_x $fx
+      set out_y $fy
+      if { $out_iterm != "NULL" && ![catch { lassign [$out_iterm getAvgXY] ok x y } err] && $ok } {
+        set out_x $x
+        set out_y $y
+      }
+
+      puts $fh "${chain_name}\t${inst_name}\t${in_x}\t${in_y}\t${out_x}\t${out_y}"
     }
+
+    incr ordinal
   }
   close $fh
 
@@ -1043,8 +1137,16 @@ proc dft_scan_get_in_iterm {inst} {
 }
 
 proc dft_scan_get_out_iterm {inst} {
-  # Prefer explicit scan-out pins; fall back to Q if necessary.
-  set candidates [list SO SCO SCAN_OUT SCANOUT Q]
+  # Prefer explicit scan-out pins; fall back to Q/QN if necessary.
+  #
+  # If DFT_PREFER_QBAR is enabled, try QN/Q_N before Q to match the scan
+  # stitching behavior and pin-based cost.
+  set prefer_qbar [dft_get_env_bool DFT_PREFER_QBAR 0]
+  if { $prefer_qbar } {
+    set candidates [list SO SCO SCAN_OUT SCANOUT QN Q_N Q]
+  } else {
+    set candidates [list SO SCO SCAN_OUT SCANOUT Q QN Q_N]
+  }
   return [dft_scan_find_iterm_by_candidates $inst $candidates]
 }
 
@@ -1309,6 +1411,7 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   if { $clock_mixing_override != "" } {
     set clock_mixing $clock_mixing_override
   }
+  set polarity_mode [dft_get_env DFT_POLARITY_MODE "strict"]
 
   set scan_enable_pattern [dft_get_env DFT_SCAN_ENABLE_NAME_PATTERN "scan_enable_{}"]
   set scan_in_pattern [dft_get_env DFT_SCAN_IN_NAME_PATTERN "scan_in_{}"]
@@ -1349,6 +1452,7 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
 
   set dft_args [list \
     -clock_mixing $clock_mixing \
+    -polarity_mode $polarity_mode \
     -scan_enable_name_pattern $scan_enable_pattern \
     -scan_in_name_pattern $scan_in_pattern \
     -scan_out_name_pattern $scan_out_pattern \
@@ -1487,9 +1591,9 @@ proc dft_check_scan_clock_mixing_policy {} {
         set cur_edge [string trim $edge]
       }
       if { $cur_clock != "" && $cur_edge != "" } {
-        # In `no_mix`, edge polarity is allowed within-chain (handled by
-        # OpenROAD's "mid" polarity ordering). Only mixing different clock
-        # *names* is a violation. In `clock_mix`, treat clock+edge together for
+        # In `no_mix`, only mixing different clock *names* is a violation here.
+        # Edge-polarity mixing is controlled by `-polarity_mode` (see
+        # DFT_POLARITY_MODE). In `clock_mix`, treat clock+edge together for
         # lockup policy checks.
         if { $clock_mixing == "no_mix" } {
           dict set domains $current_chain $cur_clock 1
@@ -1554,6 +1658,36 @@ proc dft_stitch_scan_chains {{tag "pregrt"}} {
   dft_scan_store_scan_chains_in_odb $chain_order_by_name $tag
 }
 
+proc dft_delete_unconnected_scan_nets {} {
+  set block [ord::get_db_block]
+  if { $block == "NULL" } {
+    return
+  }
+
+  set to_delete {}
+  foreach net [$block getNets] {
+    if { [$net getSigType] != "SCAN" } {
+      continue
+    }
+    if { [llength [$net getBTerms]] != 0 } {
+      continue
+    }
+    if { [llength [$net getITerms]] != 0 } {
+      continue
+    }
+    lappend to_delete $net
+  }
+
+  set deleted 0
+  foreach net $to_delete {
+    catch { odb::dbNet_destroy $net }
+    incr deleted
+  }
+  if { $deleted > 0 } {
+    puts "DFT: deleted $deleted unconnected SCAN net(s)"
+  }
+}
+
 dft_apply_dft_config
 
 dft_place_scan_ports_from_plan
@@ -1567,6 +1701,7 @@ if { $defer_stitch } {
 } else {
   puts "DFT: stitch scan chains"
   dft_stitch_scan_chains "pregrt"
+  dft_delete_unconnected_scan_nets
   dft_buffer_scan_enable_net
   dft_mark_scan_nets_dont_touch
   # QoR proxy: placement-based scan chain cost (prints + emits metrics).

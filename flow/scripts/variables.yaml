@@ -1008,6 +1008,14 @@ DFT_CLOCK_MIXING:
   stages:
     - floorplan
     - grt
+DFT_POLARITY_MODE:
+  description: >
+    How scan architect handles mixed clock-edge polarity within each chain.
+    Pass-through to `set_dft_config -polarity_mode` (`mid` or `strict`).
+  default: strict
+  stages:
+    - floorplan
+    - grt
 DFT_CHAIN_COUNT:
   description: >
     Exact number of scan chains to generate (pass-through to

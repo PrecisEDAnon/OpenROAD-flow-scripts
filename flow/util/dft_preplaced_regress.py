@@ -55,6 +55,16 @@ def _tcl_quote(path: Path) -> str:
     return "{" + str(path) + "}"
 
 
+def _load_plot_summary(path: Path) -> Optional[dict]:
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _parse_int_list(s: str) -> List[int]:
     out: List[int] = []
     for tok in s.split(","):
@@ -101,11 +111,13 @@ def run_openroad_execute_dft_plan(
     chain_count: int,
     max_imbalance: float,
     clock_mixing: str,
+    polarity_mode: str,
     scan_order_metric: Optional[str],
     scan_order_solver: str,
     scanopt_rounds: Optional[int],
     scanopt_seed: Optional[int],
     scanopt_time_limit: Optional[float],
+    insert_lockup: int,
     scan_replace: bool,
     constraints_file: Optional[Path],
     io_placer_h: Optional[str],
@@ -190,6 +202,7 @@ def run_openroad_execute_dft_plan(
         f"-chain_count {chain_count}",
         f"-max_imbalance {max_imbalance}",
         f"-clock_mixing {clock_mixing}",
+        f"-polarity_mode {polarity_mode}",
         f"-scan_order_solver {scan_order_solver}",
         "-scan_enable_name_pattern scan_enable_{}",
         "-scan_in_name_pattern scan_in_{}",
@@ -203,6 +216,10 @@ def run_openroad_execute_dft_plan(
         set_dft_args.append(f"-scanopt_seed {scanopt_seed}")
     if scanopt_time_limit is not None:
         set_dft_args.append(f"-scanopt_time_limit {scanopt_time_limit}")
+    # Default to not inserting lockups. This keeps scan planning focused on
+    # stitching order/cost and avoids requiring lockup cell configuration when
+    # using clock/edge mixing modes.
+    set_dft_args.append(f"-insert_lockup {int(insert_lockup)}")
     if constraints_file:
         set_dft_args.append(
             f"-scan_order_constraints_file {_tcl_quote(constraints_file)}"
@@ -277,6 +294,7 @@ def compute_metrics(
     openroad_runtime_s: Optional[float],
     verilog_path: Path,
     def_path: Path,
+    plot_summary_path: Optional[Path] = None,
 ) -> RunMetrics:
     validation = validate_netlist(
         verilog_path,
@@ -289,7 +307,6 @@ def compute_metrics(
         max_chain_count=requested_chain_count,
     )
 
-    placements_um, pins_um, _diearea = parse_def_placements(def_path)
     chains, _errors = reconstruct_chains_from_verilog(
         verilog_path,
         scan_in="scan_in_0",
@@ -305,60 +322,103 @@ def compute_metrics(
     max_len = chain_lengths[-1] if chain_lengths else None
     median_len = int(statistics.median(chain_lengths)) if chain_lengths else None
 
-    all_edges: List[float] = []
     per_chain: List[ChainStepMetrics] = []
-    total_internal_um = 0.0
-    total_io_um = 0.0
+    total_internal_um: Optional[float] = None
+    total_io_um: Optional[float] = None
+    total_um: Optional[float] = None
+    max_step_all: Optional[float] = None
+    p99_step_all: Optional[float] = None
 
-    for idx, chain in enumerate(chains):
-        if not chain.cells:
-            continue
-        pts = [placements_um[c] for c in chain.cells]
-        steps = [
-            abs(x1 - x0) + abs(y1 - y0)
-            for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:])
-        ]
-        steps_sorted = sorted(steps)
-        total_step = float(sum(steps))
-        max_step = float(steps_sorted[-1]) if steps_sorted else 0.0
-        p99 = float(_percentile(steps_sorted, 0.99)) if steps_sorted else 0.0
-        all_edges.extend(steps)
-        total_internal_um += total_step
+    plot_summary = _load_plot_summary(plot_summary_path) if plot_summary_path else None
+    if plot_summary is not None:
+        try:
+            total_internal_um = float(plot_summary["total_internal_cost_um"])
+            total_io_um = float(plot_summary["total_io_cost_um"])
+            total_um = float(plot_summary["total_cost_um"])
+            max_step_all = float(plot_summary["max_step_um"])
+            p99_step_all = float(plot_summary["p99_step_um"])
 
-        io_in = None
-        io_out = None
-        if chain.scan_in in pins_um and pts:
-            px, py = pins_um[chain.scan_in]
-            x0, y0 = pts[0]
-            io_in = abs(px - x0) + abs(py - y0)
-            all_edges.append(io_in)
-        if chain.scan_out in pins_um and pts:
-            px, py = pins_um[chain.scan_out]
-            x1, y1 = pts[-1]
-            io_out = abs(px - x1) + abs(py - y1)
-            all_edges.append(io_out)
+            per_chain = []
+            for i, c in enumerate(plot_summary.get("chains", [])):
+                if not isinstance(c, dict):
+                    continue
+                per_chain.append(
+                    ChainStepMetrics(
+                        chain=str(c.get("chain") or c.get("scan_out") or f"chain_{i}"),
+                        scan_in=str(c.get("scan_in") or ""),
+                        scan_out=str(c.get("scan_out") or ""),
+                        cells=int(c.get("scan_cells") or 0),
+                        total_step_um=float(c.get("internal_cost_um") or 0.0),
+                        max_step_um=float(c.get("max_internal_step_um") or 0.0),
+                        p99_step_um=float(c.get("p99_internal_step_um") or 0.0),
+                        io_in_um=float(c.get("io_in_um") or 0.0),
+                        io_out_um=float(c.get("io_out_um") or 0.0),
+                    )
+                )
+        except (KeyError, TypeError, ValueError):
+            # Fall back to DEF-based metrics below.
+            per_chain = []
+            plot_summary = None
 
-        total_io_um += float((io_in or 0.0) + (io_out or 0.0))
+    if plot_summary is None:
+        placements_um, pins_um, _diearea = parse_def_placements(def_path)
 
-        per_chain.append(
-            ChainStepMetrics(
-                chain=f"chain_{idx}",
-                scan_in=chain.scan_in,
-                scan_out=chain.scan_out,
-                cells=len(chain.cells),
-                total_step_um=total_step,
-                max_step_um=max_step,
-                p99_step_um=p99,
-                io_in_um=io_in,
-                io_out_um=io_out,
+        all_edges: List[float] = []
+        total_internal_um_f = 0.0
+        total_io_um_f = 0.0
+
+        for idx, chain in enumerate(chains):
+            if not chain.cells:
+                continue
+            pts = [placements_um[c] for c in chain.cells]
+            steps = [
+                abs(x1 - x0) + abs(y1 - y0)
+                for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:])
+            ]
+            steps_sorted = sorted(steps)
+            total_step = float(sum(steps))
+            max_step = float(steps_sorted[-1]) if steps_sorted else 0.0
+            p99 = float(_percentile(steps_sorted, 0.99)) if steps_sorted else 0.0
+            all_edges.extend(steps)
+            total_internal_um_f += total_step
+
+            io_in = None
+            io_out = None
+            if chain.scan_in in pins_um and pts:
+                px, py = pins_um[chain.scan_in]
+                x0, y0 = pts[0]
+                io_in = abs(px - x0) + abs(py - y0)
+                all_edges.append(io_in)
+            if chain.scan_out in pins_um and pts:
+                px, py = pins_um[chain.scan_out]
+                x1, y1 = pts[-1]
+                io_out = abs(px - x1) + abs(py - y1)
+                all_edges.append(io_out)
+
+            total_io_um_f += float((io_in or 0.0) + (io_out or 0.0))
+
+            per_chain.append(
+                ChainStepMetrics(
+                    chain=f"chain_{idx}",
+                    scan_in=chain.scan_in,
+                    scan_out=chain.scan_out,
+                    cells=len(chain.cells),
+                    total_step_um=total_step,
+                    max_step_um=max_step,
+                    p99_step_um=p99,
+                    io_in_um=io_in,
+                    io_out_um=io_out,
+                )
             )
-        )
 
-    all_edges_sorted = sorted(all_edges)
-    max_step_all = float(all_edges_sorted[-1]) if all_edges_sorted else None
-    p99_step_all = (
-        float(_percentile(all_edges_sorted, 0.99)) if all_edges_sorted else None
-    )
+        all_edges_sorted = sorted(all_edges)
+        max_step_all = float(all_edges_sorted[-1]) if all_edges_sorted else None
+        p99_step_all = (
+            float(_percentile(all_edges_sorted, 0.99)) if all_edges_sorted else None
+        )
+        total_internal_um = total_internal_um_f
+        total_io_um = total_io_um_f
+        total_um = total_internal_um_f + total_io_um_f
 
     return RunMetrics(
         tag=tag,
@@ -372,7 +432,7 @@ def compute_metrics(
         max_chain_len=max_len,
         total_internal_um=total_internal_um,
         total_io_um=total_io_um,
-        total_um=total_internal_um + total_io_um,
+        total_um=total_um,
         max_step_um=max_step_all,
         p99_step_um=p99_step_all,
         chains=per_chain,
@@ -427,6 +487,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Comma-separated list (percent).",
     )
     ap.add_argument("--clock-mixing", default="no_mix")
+    ap.add_argument("--polarity-mode", default="strict", choices=["mid", "strict"])
     ap.add_argument("--scan-order-metric", default=None)
     ap.add_argument("--scan-order-solver", default="SCANOPT")
     ap.add_argument("--scanopt-rounds", type=int, default=500000)
@@ -436,6 +497,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         type=float,
         default=15.0,
         help="Total budget (seconds) across all chains.",
+    )
+    ap.add_argument(
+        "--insert-lockup",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="Enable lockup insertion when mixing clock domains (0/1).",
     )
     ap.add_argument(
         "--scan-replace",
@@ -486,7 +554,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             metric = args.scan_order_metric or "DEFAULT"
             print(
                 f"=== execute_dft_plan: {tag} "
-                f"(solver={args.scan_order_solver}, metric={metric}, clock_mixing={args.clock_mixing}) ==="
+                f"(solver={args.scan_order_solver}, metric={metric}, clock_mixing={args.clock_mixing}, polarity_mode={args.polarity_mode}) ==="
             )
             out_def = out_prefix.with_name(f"{out_prefix.name}_{tag}.def")
             out_v = out_prefix.with_name(f"{out_prefix.name}_{tag}.v")
@@ -508,11 +576,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     chain_count=k,
                     max_imbalance=imb,
                     clock_mixing=args.clock_mixing,
+                    polarity_mode=args.polarity_mode,
                     scan_order_metric=args.scan_order_metric,
                     scan_order_solver=args.scan_order_solver,
                     scanopt_rounds=args.scanopt_rounds,
                     scanopt_seed=args.scanopt_seed,
                     scanopt_time_limit=args.scanopt_time_limit,
+                    insert_lockup=args.insert_lockup,
                     scan_replace=args.scan_replace,
                     constraints_file=args.constraints_file,
                     io_placer_h=args.io_placer_h,
@@ -521,6 +591,45 @@ def main(argv: Optional[List[str]] = None) -> int:
                     echo_openroad=args.echo_openroad,
                 )
 
+            out_plot = out_prefix.with_name(f"{out_prefix.name}_{tag}.png")
+            out_plot_json = out_prefix.with_name(f"{out_prefix.name}_{tag}.plot.json")
+            plot_summary_path: Optional[Path] = None
+
+            if out_odb.exists():
+                try:
+                    out_plot_json.unlink()
+                except FileNotFoundError:
+                    pass
+                plot_cmd = [
+                    str(openroad_exe),
+                    "-python",
+                    "-exit",
+                    str(plot_or_py),
+                    "--odb",
+                    str(out_odb),
+                    "--out",
+                    str(out_plot),
+                    "--out-json",
+                    str(out_plot_json),
+                ]
+                if args.no_plots:
+                    plot_cmd.append("--no-plot")
+                if args.constraints_file and args.constraints_file.exists():
+                    plot_cmd += ["--constraints-file", str(args.constraints_file)]
+                try:
+                    subprocess.run(
+                        plot_cmd,
+                        check=True,
+                        text=True,
+                    )
+                    if out_plot_json.exists():
+                        plot_summary_path = out_plot_json
+                except subprocess.CalledProcessError as e:
+                    print(
+                        f"[WARN] scan_chain_plot_openroad failed (exit {e.returncode}); "
+                        f"falling back to DEF-based metrics for {tag}."
+                    )
+
             m = compute_metrics(
                 tag=tag,
                 requested_chain_count=k,
@@ -528,31 +637,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                 openroad_runtime_s=openroad_runtime_s,
                 verilog_path=out_v,
                 def_path=out_def,
+                plot_summary_path=plot_summary_path,
             )
             all_runs.append(m)
             md_lines.append(write_md_row(m))
 
             if not args.no_plots:
-                out_plot = out_prefix.with_name(f"{out_prefix.name}_{tag}.png")
-                out_plot_json = out_prefix.with_name(f"{out_prefix.name}_{tag}.plot.json")
-                if out_odb.exists():
-                    subprocess.run(
-                        [
-                            str(openroad_exe),
-                            "-python",
-                            "-exit",
-                            str(plot_or_py),
-                            "--odb",
-                            str(out_odb),
-                            "--out",
-                            str(out_plot),
-                            "--out-json",
-                            str(out_plot_json),
-                        ],
-                        check=True,
-                        text=True,
-                    )
-                else:
+                if not out_odb.exists():
                     subprocess.run(
                         [
                             os.environ.get("PYTHON_EXE", "python3"),

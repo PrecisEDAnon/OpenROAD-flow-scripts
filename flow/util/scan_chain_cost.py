@@ -123,6 +123,7 @@ def run_openroad_plan(
     odb: Path,
     sdc: Path,
     out_def: Path,
+    out_pins_tsv: Path,
     max_chains: Optional[int],
     max_length: Optional[int],
     clock_mixing: str,
@@ -148,6 +149,41 @@ def run_openroad_plan(
         tcl_lines.append("scan_replace")
     tcl_lines += [
         "report_dft_plan -verbose",
+        # Export per-instance scan in/out pin locations (DBU) for pin-based
+        # scan-chain cost metrics (supports asymmetric costs).
+        f"set __dft_pins_fh [open {_tcl_quote(out_pins_tsv)} w]",
+        'puts $__dft_pins_fh "name\\tin_x\\tin_y\\tout_x\\tout_y"',
+        "set __dft_block [ord::get_db_block]",
+        "foreach __dft_inst [$__dft_block getInsts] {",
+        "  set __dft_name [$__dft_inst getName]",
+        "  set __dft_in_iterm NULL",
+        "  foreach __dft_pin {SI SD SCD SCAN_IN SCANIN} {",
+        "    set __dft_t [$__dft_inst findITerm $__dft_pin]",
+        "    if { $__dft_t != \"NULL\" } { set __dft_in_iterm $__dft_t; break }",
+        "  }",
+        "  if { $__dft_in_iterm == \"NULL\" } { continue }",
+        "  set __dft_out_iterm NULL",
+        "  foreach __dft_pin {SO SCO SCAN_OUT SCANOUT Q QN Q_N} {",
+        "    set __dft_t [$__dft_inst findITerm $__dft_pin]",
+        "    if { $__dft_t != \"NULL\" } { set __dft_out_iterm $__dft_t; break }",
+        "  }",
+        "  if { $__dft_out_iterm == \"NULL\" } { continue }",
+        "  lassign [$__dft_inst getLocation] __dft_fx __dft_fy",
+        "  set __dft_in_x $__dft_fx",
+        "  set __dft_in_y $__dft_fy",
+        "  if { ![catch { set __dft_bb [$__dft_in_iterm getBBox] } __dft_err] } {",
+        "    set __dft_in_x [$__dft_bb xMin]",
+        "    set __dft_in_y [$__dft_bb yMin]",
+        "  }",
+        "  set __dft_out_x $__dft_fx",
+        "  set __dft_out_y $__dft_fy",
+        "  if { ![catch { set __dft_bb2 [$__dft_out_iterm getBBox] } __dft_err] } {",
+        "    set __dft_out_x [$__dft_bb2 xMin]",
+        "    set __dft_out_y [$__dft_bb2 yMin]",
+        "  }",
+        '  puts $__dft_pins_fh "${__dft_name}\\t${__dft_in_x}\\t${__dft_in_y}\\t${__dft_out_x}\\t${__dft_out_y}"',
+        "}",
+        "close $__dft_pins_fh",
         f"write_def {_tcl_quote(out_def)}",
         "exit",
     ]
@@ -269,23 +305,111 @@ def parse_def_units_and_coords(
     return units, coords
 
 
-def manhattan_path_dbu(order: Sequence[str], coords: Dict[str, Tuple[int, int]]) -> int:
+def parse_def_pins(
+    def_path: Path, needed_pins: Iterable[str]
+) -> Tuple[Optional[int], Dict[str, Tuple[int, int]]]:
+    needed = set(needed_pins)
+    coords: Dict[str, Tuple[int, int]] = {}
+    units: Optional[int] = None
+
+    in_pins = False
+    place_re = re.compile(r"\+\s+(?:PLACED|FIXED)\s*\(\s*(-?\d+)\s+(-?\d+)\s*\)", re.IGNORECASE)
+    pin_buf: List[str] = []
+
+    with def_path.open() as f:
+        for line in f:
+            if units is None:
+                m = re.match(r"^UNITS\s+DISTANCE\s+MICRONS\s+(\d+)\s*;", line)
+                if m:
+                    units = int(m.group(1))
+
+            stripped = line.lstrip()
+            if stripped.startswith("PINS"):
+                in_pins = True
+                continue
+            if stripped.startswith("END PINS"):
+                in_pins = False
+                if len(coords) == len(needed):
+                    break
+                continue
+            if not in_pins:
+                continue
+
+            if not pin_buf:
+                if not stripped.startswith("-"):
+                    continue
+                pin_buf = [stripped.rstrip("\n")]
+            else:
+                pin_buf.append(stripped.rstrip("\n"))
+
+            if ";" not in stripped:
+                continue
+
+            rec = " ".join(pin_buf)
+            pin_buf = []
+            toks = rec.split()
+            if len(toks) < 2 or toks[0] != "-":
+                continue
+            pin_name = toks[1]
+            if pin_name not in needed:
+                continue
+            m = place_re.search(rec)
+            if not m:
+                continue
+            coords[pin_name] = (int(m.group(1)), int(m.group(2)))
+            if len(coords) == len(needed):
+                break
+
+    return units, coords
+
+
+def parse_scanff_pins_tsv(path: Path) -> Dict[str, Tuple[int, int, int, int]]:
+    pins: Dict[str, Tuple[int, int, int, int]] = {}
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if not lines:
+        return pins
+    start = 0
+    if lines[0].startswith("name\t"):
+        start = 1
+    for raw in lines[start:]:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) != 5:
+            continue
+        name, in_x, in_y, out_x, out_y = parts
+        pins[name] = (int(in_x), int(in_y), int(out_x), int(out_y))
+    return pins
+
+
+def manhattan_path_dbu(
+    order: Sequence[str],
+    pins: Dict[str, Tuple[int, int, int, int]],
+    *,
+    begin: Optional[Tuple[int, int]] = None,
+    end: Optional[Tuple[int, int]] = None,
+) -> int:
     total = 0
-    last_xy: Optional[Tuple[int, int]] = None
-    for inst in order:
-        xy = coords[inst]
-        if last_xy is not None:
-            total += abs(xy[0] - last_xy[0]) + abs(xy[1] - last_xy[1])
-        last_xy = xy
+    last: Optional[Tuple[int, int]] = None
+    for idx, inst in enumerate(order):
+        in_x, in_y, out_x, out_y = pins[inst]
+        if idx == 0 and begin is not None:
+            total += abs(begin[0] - in_x) + abs(begin[1] - in_y)
+        if last is not None:
+            total += abs(last[0] - in_x) + abs(last[1] - in_y)
+        last = (out_x, out_y)
+    if last is not None and end is not None:
+        total += abs(last[0] - end[0]) + abs(last[1] - end[1])
     return total
 
 
-def manhattan_steps_dbu(order: Sequence[str], coords: Dict[str, Tuple[int, int]]) -> List[int]:
+def manhattan_steps_dbu(order: Sequence[str], pins: Dict[str, Tuple[int, int, int, int]]) -> List[int]:
     steps: List[int] = []
     for a, b in zip(order[:-1], order[1:]):
-        ax, ay = coords[a]
-        bx, by = coords[b]
-        steps.append(abs(ax - bx) + abs(ay - by))
+        _, _, a_out_x, a_out_y = pins[a]
+        b_in_x, b_in_y, _, _ = pins[b]
+        steps.append(abs(a_out_x - b_in_x) + abs(a_out_y - b_in_y))
     return steps
 
 
@@ -300,32 +424,49 @@ def _pctl_nearest_rank(sorted_vals: Sequence[int], p: float) -> int:
 
 
 def nearest_neighbor_manhattan_path_dbu(
-    order: Sequence[str], coords: Dict[str, Tuple[int, int]], *, start: Optional[str] = None
+    order: Sequence[str],
+    pins: Dict[str, Tuple[int, int, int, int]],
+    *,
+    begin: Optional[Tuple[int, int]] = None,
+    end: Optional[Tuple[int, int]] = None,
 ) -> int:
     if not order:
         return 0
-    if start is None:
-        start = order[0]
-    if start not in coords:
-        raise KeyError(start)
-
     remaining = set(order)
-    remaining.remove(start)
-    cur = start
     total = 0
 
+    # Pick the start node by begin->in cost when begin is available, otherwise
+    # use the first node in the provided order.
+    if begin is None:
+        cur = order[0]
+    else:
+        cur = min(
+            remaining,
+            key=lambda inst: (
+                abs(begin[0] - pins[inst][0]) + abs(begin[1] - pins[inst][1]),
+                inst,
+            ),
+        )
+        total += abs(begin[0] - pins[cur][0]) + abs(begin[1] - pins[cur][1])
+
+    remaining.remove(cur)
+
     while remaining:
-        cx, cy = coords[cur]
+        _, _, cx, cy = pins[cur]
 
         def key(inst: str) -> Tuple[int, str]:
-            x, y = coords[inst]
-            return (abs(x - cx) + abs(y - cy), inst)
+            in_x, in_y, _, _ = pins[inst]
+            return (abs(in_x - cx) + abs(in_y - cy), inst)
 
         nxt = min(remaining, key=key)
-        x, y = coords[nxt]
-        total += abs(x - cx) + abs(y - cy)
+        in_x, in_y, _, _ = pins[nxt]
+        total += abs(in_x - cx) + abs(in_y - cy)
         remaining.remove(nxt)
         cur = nxt
+
+    if end is not None:
+        _, _, ox, oy = pins[cur]
+        total += abs(ox - end[0]) + abs(oy - end[1])
 
     return total
 
@@ -333,16 +474,19 @@ def nearest_neighbor_manhattan_path_dbu(
 def compute_chain_metrics(
     chain_name: str,
     order: Sequence[str],
-    coords: Dict[str, Tuple[int, int]],
+    pins: Dict[str, Tuple[int, int, int, int]],
     units: Optional[int],
     compute_nearest_neighbor: bool,
+    *,
+    begin: Optional[Tuple[int, int]] = None,
+    end: Optional[Tuple[int, int]] = None,
 ) -> ChainMetrics:
-    steps_dbu = manhattan_steps_dbu(order, coords)
+    steps_dbu = manhattan_steps_dbu(order, pins)
     steps_sorted = sorted(steps_dbu)
     p99_step_dbu = _pctl_nearest_rank(steps_sorted, 0.99)
     max_step_dbu = max(steps_dbu) if steps_dbu else 0
 
-    manhattan_dbu = manhattan_path_dbu(order, coords)
+    manhattan_dbu = manhattan_path_dbu(order, pins, begin=begin, end=end)
     manhattan_um = (manhattan_dbu / units) if units else None
 
     avg_step_um: Optional[float]
@@ -357,7 +501,7 @@ def compute_chain_metrics(
     naive_lex_manhattan_um: Optional[float]
     naive_lex_ratio: Optional[float]
     if units and len(order) > 1:
-        naive_lex_dbu = manhattan_path_dbu(sorted(order), coords)
+        naive_lex_dbu = manhattan_path_dbu(sorted(order), pins, begin=begin, end=end)
         naive_lex_manhattan_um = naive_lex_dbu / units
         naive_lex_ratio = naive_lex_dbu / manhattan_dbu if manhattan_dbu else None
     else:
@@ -367,7 +511,7 @@ def compute_chain_metrics(
     nearest_neighbor_manhattan_um: Optional[float]
     openroad_over_nn_ratio: Optional[float]
     if compute_nearest_neighbor and units and len(order) > 1:
-        nn_dbu = nearest_neighbor_manhattan_path_dbu(order, coords, start=order[0])
+        nn_dbu = nearest_neighbor_manhattan_path_dbu(order, pins, begin=begin, end=end)
         nearest_neighbor_manhattan_um = nn_dbu / units
         openroad_over_nn_ratio = (manhattan_dbu / nn_dbu) if nn_dbu else None
     else:
@@ -395,7 +539,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Compute a TSP-like scan-chain length metric from OpenROAD's "
-            "`report_dft_plan -verbose` output and instance origins."
+            "`report_dft_plan -verbose` output and scan pin locations."
         )
     )
     parser.add_argument("--openroad", required=True, type=Path)
@@ -449,6 +593,8 @@ def main() -> int:
         default=None,
         help="Write an SVG visualization of the scan ordering (start=green, end=red).",
     )
+    parser.add_argument("--scan-in-prefix", default="scan_in_")
+    parser.add_argument("--scan-out-prefix", default="scan_out_")
     parser.add_argument(
         "--verbose-openroad",
         action="store_true",
@@ -473,6 +619,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="scan_chain_cost_", dir=os.getcwd()) as td:
         tmp_dir = Path(td)
         out_def = tmp_dir / "design.def"
+        out_pins_tsv = tmp_dir / "scanff_pins.tsv"
         max_chains: Optional[int] = args.max_chains
         if max_chains is None and args.max_length is None:
             max_chains = 1
@@ -483,6 +630,7 @@ def main() -> int:
             odb=odb,
             sdc=sdc,
             out_def=out_def,
+            out_pins_tsv=out_pins_tsv,
             max_chains=max_chains,
             max_length=args.max_length,
             clock_mixing=args.clock_mixing,
@@ -512,15 +660,32 @@ def main() -> int:
                 f"First missing: {missing[0]}"
             )
 
+        pins = parse_scanff_pins_tsv(out_pins_tsv)
+        missing_pins = [inst for inst in needed if inst not in pins]
+        if missing_pins:
+            raise RuntimeError(
+                f"Missing {len(missing_pins)}/{len(needed)} scan pin locations in TSV output. "
+                f"First missing: {missing_pins[0]}"
+            )
+
+        # Optional begin/end port locations (DBU), inferred by ordinal.
+        needed_ports: List[str] = []
+        for i in range(len(chains)):
+            needed_ports.append(f"{args.scan_in_prefix}{i}")
+            needed_ports.append(f"{args.scan_out_prefix}{i}")
+        _, port_xy = parse_def_pins(out_def, needed_ports)
+
         metrics = [
             compute_chain_metrics(
                 name,
                 order,
-                coords,
+                pins,
                 units,
                 compute_nearest_neighbor=args.nearest_neighbor,
+                begin=port_xy.get(f"{args.scan_in_prefix}{idx}"),
+                end=port_xy.get(f"{args.scan_out_prefix}{idx}"),
             )
-            for name, order in chains.items()
+            for idx, (name, order) in enumerate(chains.items())
         ]
         metrics.sort(key=lambda m: m.name)
 
@@ -573,7 +738,7 @@ def main() -> int:
             _write_scan_svg(
                 args.out_svg.resolve(),
                 chains=chains,
-                coords_dbu=coords,
+                coords_dbu={name: (pins[name][0], pins[name][1]) for name in needed},
                 units_dbu_per_micron=units,
             )
 

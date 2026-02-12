@@ -8,7 +8,11 @@ set_propagated_clock [all_clocks]
 # Ensure all OR created (rsz/cts) instances are connected
 global_connect
 
-orfs_write_db $::env(RESULTS_DIR)/6_final.odb
+ if { [info commands orfs_write_db] != "" } {
+   orfs_write_db $::env(RESULTS_DIR)/6_final.odb
+ } else {
+   write_db $::env(RESULTS_DIR)/6_final.odb
+ }
 
 # Delete routing obstructions for final DEF
 source $::env(SCRIPTS_DIR)/deleteRoutingObstructions.tcl
