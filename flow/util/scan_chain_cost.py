@@ -3,13 +3,12 @@
 import argparse
 import json
 import os
-import re
 import subprocess
 import tempfile
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -33,16 +32,19 @@ def _write_scan_svg(
     out_svg: Path,
     *,
     chains: Dict[str, List[str]],
-    coords_dbu: Dict[str, Tuple[int, int]],
+    pins_dbu: Dict[str, Tuple[int, int, int, int]],
     units_dbu_per_micron: int,
 ) -> None:
-    coords_um = {
-        inst: (x / units_dbu_per_micron, y / units_dbu_per_micron)
-        for inst, (x, y) in coords_dbu.items()
-    }
+    def to_um(x_dbu: int, y_dbu: int) -> Tuple[float, float]:
+        return (x_dbu / units_dbu_per_micron, y_dbu / units_dbu_per_micron)
 
-    xs = [x for x, _ in coords_um.values()]
-    ys = [y for _, y in coords_um.values()]
+    all_pts_um: List[Tuple[float, float]] = []
+    for si_x, si_y, so_x, so_y in pins_dbu.values():
+        all_pts_um.append(to_um(si_x, si_y))
+        all_pts_um.append(to_um(so_x, so_y))
+
+    xs = [x for x, _ in all_pts_um]
+    ys = [y for _, y in all_pts_um]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
 
@@ -82,23 +84,24 @@ def _write_scan_svg(
     ]
 
     for idx, (chain_name, order) in enumerate(sorted(chains.items())):
-        if not order:
+        if len(order) < 2:
             continue
         color = colors[idx % len(colors)]
-        pts: List[str] = []
-        for inst in order:
-            x_um, y_um = coords_um[inst]
-            x, y = to_svg_xy(x_um, y_um)
-            pts.append(f"{x:.3f},{y:.3f}")
-
         stroke_w = max(0.15, 0.0008 * max(vb_w, vb_h))
-        lines.append(
-            f'<polyline fill="none" stroke="{color}" stroke-width="{stroke_w:.3f}" '
-            f'stroke-linejoin="round" stroke-linecap="round" points="{" ".join(pts)}"/>'
-        )
+        for src, dst in zip(order, order[1:]):
+            _, _, so_x, so_y = pins_dbu[src]
+            si_x, si_y, _, _ = pins_dbu[dst]
+            x1, y1 = to_svg_xy(*to_um(so_x, so_y))
+            x2, y2 = to_svg_xy(*to_um(si_x, si_y))
+            lines.append(
+                f'<line x1="{x1:.3f}" y1="{y1:.3f}" x2="{x2:.3f}" y2="{y2:.3f}" '
+                f'stroke="{color}" stroke-width="{stroke_w:.3f}" stroke-linecap="round" />'
+            )
 
-        sx, sy = to_svg_xy(*coords_um[order[0]])
-        ex, ey = to_svg_xy(*coords_um[order[-1]])
+        start_si_x, start_si_y, _, _ = pins_dbu[order[0]]
+        _, _, end_so_x, end_so_y = pins_dbu[order[-1]]
+        sx, sy = to_svg_xy(*to_um(start_si_x, start_si_y))
+        ex, ey = to_svg_xy(*to_um(end_so_x, end_so_y))
         r = max(0.8, 0.003 * max(vb_w, vb_h))
         lines.append(f'<circle cx="{sx:.3f}" cy="{sy:.3f}" r="{r:.3f}" fill="#2ca02c"/>')
         lines.append(f'<circle cx="{ex:.3f}" cy="{ey:.3f}" r="{r:.3f}" fill="#d62728"/>')
@@ -118,7 +121,6 @@ def run_openroad_plan(
     liberties: Sequence[Path],
     odb: Path,
     sdc: Path,
-    out_def: Path,
     max_chains: Optional[int],
     max_length: Optional[int],
     clock_mixing: str,
@@ -140,8 +142,7 @@ def run_openroad_plan(
     if do_scan_replace:
         tcl_lines.append("scan_replace")
     tcl_lines += [
-        "report_dft_plan -verbose",
-        f"write_def {_tcl_quote(out_def)}",
+        "report_dft_plan_pins -verbose",
         "exit",
     ]
 
@@ -178,124 +179,106 @@ def run_openroad_plan(
             pass
 
 
-def parse_report_dft_plan_verbose(openroad_output: str) -> Dict[str, List[str]]:
-    chains: Dict[str, List[str]] = {}
-    current: Optional[str] = None
+def parse_report_dft_plan_pins(
+    openroad_output: str,
+) -> Tuple[Optional[int], Dict[str, List[str]], Dict[str, Tuple[int, int, int, int]]]:
+    dbu_per_micron: Optional[int] = None
+    pins: Dict[str, Tuple[int, int, int, int]] = {}
+    cells_by_chain: Dict[str, List[Tuple[int, str]]] = {}
 
-    chain_re = re.compile(r"^Scan chain '([^']+)' has (\d+) cells")
+    in_block = False
     for line in openroad_output.splitlines():
-        m = chain_re.match(line)
-        if m:
-            current = m.group(1)
-            chains[current] = []
+        line = line.strip()
+        if line == "DFT_PLAN_PINS_BEGIN":
+            in_block = True
             continue
-        if current is None:
+        if line == "DFT_PLAN_PINS_END":
+            break
+        if not in_block or not line:
             continue
-        if line.startswith("  "):
-            chains[current].append(line.strip().split()[0])
 
-    return chains
+        if line.startswith("DFT_DBU_PER_UM "):
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    dbu_per_micron = int(parts[1])
+                except ValueError:
+                    dbu_per_micron = None
+            continue
 
+        if line.startswith("DFT_CHAIN "):
+            parts = line.split()
+            if len(parts) >= 2:
+                cells_by_chain.setdefault(parts[1], [])
+            continue
 
-def parse_def_units_and_coords(
-    def_path: Path, needed_insts: Iterable[str]
-) -> Tuple[Optional[int], Dict[str, Tuple[int, int]]]:
-    needed = set(needed_insts)
-    coords: Dict[str, Tuple[int, int]] = {}
-    units: Optional[int] = None
-
-    in_components = False
-    place_re = re.compile(
-        r"\+\s+(?:PLACED|FIXED)\s*\(\s*(-?\d+)\s+(-?\d+)\s*\)", re.IGNORECASE
-    )
-    component_buf: List[str] = []
-
-    with def_path.open() as f:
-        for line in f:
-            if units is None:
-                m = re.match(r"^UNITS\s+DISTANCE\s+MICRONS\s+(\d+)\s*;", line)
-                if m:
-                    units = int(m.group(1))
-
-            stripped = line.lstrip()
-            if stripped.startswith("COMPONENTS"):
-                in_components = True
+        if line.startswith("DFT_CELL "):
+            parts = line.split()
+            if len(parts) < 8:
                 continue
-            if stripped.startswith("END COMPONENTS"):
-                in_components = False
-                if len(coords) == len(needed):
-                    break
+            chain = parts[1]
+            try:
+                idx = int(parts[2])
+                inst = parts[3]
+                si_x = int(parts[4])
+                si_y = int(parts[5])
+                so_x = int(parts[6])
+                so_y = int(parts[7])
+            except ValueError:
                 continue
-            if not in_components:
-                continue
+            cells_by_chain.setdefault(chain, []).append((idx, inst))
+            pins[inst] = (si_x, si_y, so_x, so_y)
 
-            if not component_buf:
-                if not stripped.startswith("-"):
-                    continue
-                component_buf = [stripped.rstrip("\n")]
-            else:
-                component_buf.append(stripped.rstrip("\n"))
+    chains: Dict[str, List[str]] = {}
+    for chain, items in cells_by_chain.items():
+        items.sort(key=lambda t: t[0])
+        chains[chain] = [inst for _, inst in items]
 
-            if ";" not in stripped:
-                continue
-
-            component = " ".join(component_buf)
-            component_buf = []
-
-            # First two tokens are: - <inst> <master> ...
-            tokens = component.split()
-            if len(tokens) < 3 or tokens[0] != "-":
-                continue
-            inst_name = tokens[1]
-            if inst_name not in needed:
-                continue
-
-            m = place_re.search(component)
-            if not m:
-                continue
-            coords[inst_name] = (int(m.group(1)), int(m.group(2)))
-            if len(coords) == len(needed):
-                break
-
-    return units, coords
+    return dbu_per_micron, chains, pins
 
 
-def manhattan_path_dbu(order: Sequence[str], coords: Dict[str, Tuple[int, int]]) -> int:
+def scan_edge_cost_dbu(
+    src: str, dst: str, pins_dbu: Dict[str, Tuple[int, int, int, int]]
+) -> int:
+    _, _, so_x, so_y = pins_dbu[src]
+    si_x, si_y, _, _ = pins_dbu[dst]
+    return abs(so_x - si_x) + abs(so_y - si_y)
+
+
+def scan_path_cost_dbu(
+    order: Sequence[str], pins_dbu: Dict[str, Tuple[int, int, int, int]]
+) -> int:
     total = 0
-    last_xy: Optional[Tuple[int, int]] = None
-    for inst in order:
-        xy = coords[inst]
-        if last_xy is not None:
-            total += abs(xy[0] - last_xy[0]) + abs(xy[1] - last_xy[1])
-        last_xy = xy
+    for src, dst in zip(order, order[1:]):
+        total += scan_edge_cost_dbu(src, dst, pins_dbu)
     return total
 
 
-def nearest_neighbor_manhattan_path_dbu(
-    order: Sequence[str], coords: Dict[str, Tuple[int, int]], *, start: Optional[str] = None
+def nearest_neighbor_scan_path_cost_dbu(
+    cells: Sequence[str],
+    pins_dbu: Dict[str, Tuple[int, int, int, int]],
+    *,
+    start: Optional[str] = None,
 ) -> int:
-    if not order:
+    if not cells:
         return 0
     if start is None:
-        start = order[0]
-    if start not in coords:
+        start = cells[0]
+    if start not in pins_dbu:
         raise KeyError(start)
 
-    remaining = set(order)
+    remaining = set(cells)
     remaining.remove(start)
     cur = start
     total = 0
 
     while remaining:
-        cx, cy = coords[cur]
 
         def key(inst: str) -> Tuple[int, str]:
-            x, y = coords[inst]
-            return (abs(x - cx) + abs(y - cy), inst)
+            return (scan_edge_cost_dbu(cur, inst, pins_dbu), inst)
 
         nxt = min(remaining, key=key)
-        x, y = coords[nxt]
-        total += abs(x - cx) + abs(y - cy)
+        total += scan_edge_cost_dbu(cur, nxt, pins_dbu)
         remaining.remove(nxt)
         cur = nxt
 
@@ -305,11 +288,11 @@ def nearest_neighbor_manhattan_path_dbu(
 def compute_chain_metrics(
     chain_name: str,
     order: Sequence[str],
-    coords: Dict[str, Tuple[int, int]],
+    pins_dbu: Dict[str, Tuple[int, int, int, int]],
     units: Optional[int],
     compute_nearest_neighbor: bool,
 ) -> ChainMetrics:
-    manhattan_dbu = manhattan_path_dbu(order, coords)
+    manhattan_dbu = scan_path_cost_dbu(order, pins_dbu)
     manhattan_um = (manhattan_dbu / units) if units else None
 
     avg_step_um: Optional[float]
@@ -321,7 +304,7 @@ def compute_chain_metrics(
     naive_lex_manhattan_um: Optional[float]
     naive_lex_ratio: Optional[float]
     if units and len(order) > 1:
-        naive_lex_dbu = manhattan_path_dbu(sorted(order), coords)
+        naive_lex_dbu = scan_path_cost_dbu(sorted(order), pins_dbu)
         naive_lex_manhattan_um = naive_lex_dbu / units
         naive_lex_ratio = naive_lex_dbu / manhattan_dbu if manhattan_dbu else None
     else:
@@ -331,7 +314,7 @@ def compute_chain_metrics(
     nearest_neighbor_manhattan_um: Optional[float]
     openroad_over_nn_ratio: Optional[float]
     if compute_nearest_neighbor and units and len(order) > 1:
-        nn_dbu = nearest_neighbor_manhattan_path_dbu(order, coords, start=order[0])
+        nn_dbu = nearest_neighbor_scan_path_cost_dbu(order, pins_dbu, start=order[0])
         nearest_neighbor_manhattan_um = nn_dbu / units
         openroad_over_nn_ratio = (manhattan_dbu / nn_dbu) if nn_dbu else None
     else:
@@ -354,8 +337,8 @@ def compute_chain_metrics(
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Compute a TSP-like scan-chain length metric from OpenROAD's "
-            "`report_dft_plan -verbose` output and instance origins."
+            "Compute a scan-chain length proxy from OpenROAD's "
+            "`report_dft_plan_pins -verbose` output (scan-out -> scan-in pin-to-pin)."
         )
     )
     parser.add_argument("--openroad", required=True, type=Path)
@@ -371,7 +354,7 @@ def main() -> int:
         "--sdc",
         required=True,
         type=Path,
-        help="Used so `report_dft_plan` can infer clock domains; still runs if missing.",
+        help="Used so `report_dft_plan_pins` can infer clock domains; still runs if missing.",
     )
     parser.add_argument(
         "--max-chains",
@@ -424,109 +407,104 @@ def main() -> int:
         if not path.exists():
             raise FileNotFoundError(path)
 
-    with tempfile.TemporaryDirectory(prefix="scan_chain_cost_", dir=os.getcwd()) as td:
-        tmp_dir = Path(td)
-        out_def = tmp_dir / "design.def"
-        max_chains: Optional[int] = args.max_chains
-        if max_chains is None and args.max_length is None:
-            max_chains = 1
+    max_chains: Optional[int] = args.max_chains
+    if max_chains is None and args.max_length is None:
+        max_chains = 1
 
-        openroad_output = run_openroad_plan(
-            openroad_exe=openroad_exe,
-            liberties=liberties,
-            odb=odb,
-            sdc=sdc,
-            out_def=out_def,
-            max_chains=max_chains,
-            max_length=args.max_length,
-            clock_mixing=args.clock_mixing,
-            do_scan_replace=args.scan_replace,
-            verbose=args.verbose_openroad,
+    openroad_output = run_openroad_plan(
+        openroad_exe=openroad_exe,
+        liberties=liberties,
+        odb=odb,
+        sdc=sdc,
+        max_chains=max_chains,
+        max_length=args.max_length,
+        clock_mixing=args.clock_mixing,
+        do_scan_replace=args.scan_replace,
+        verbose=args.verbose_openroad,
+    )
+
+    units, chains, pins = parse_report_dft_plan_pins(openroad_output)
+    if not chains:
+        print("No scan chains found in `report_dft_plan_pins -verbose` output.")
+        return 2
+
+    needed = [inst for order in chains.values() for inst in order]
+    dupes = [name for name, count in Counter(needed).items() if count > 1]
+    if dupes:
+        raise RuntimeError(
+            "Duplicate scan cells in `report_dft_plan_pins -verbose` output. "
+            f"First duplicate: {dupes[0]}"
         )
 
-        chains = parse_report_dft_plan_verbose(openroad_output)
-        if not chains:
-            print("No scan chains found in `report_dft_plan -verbose` output.")
-            return 2
-
-        needed = [inst for order in chains.values() for inst in order]
-        dupes = [name for name, count in Counter(needed).items() if count > 1]
-        if dupes:
-            raise RuntimeError(
-                "Duplicate scan cells in `report_dft_plan -verbose` output. "
-                f"First duplicate: {dupes[0]}"
-            )
-        units, coords = parse_def_units_and_coords(out_def, needed)
-
-        missing = [inst for inst in needed if inst not in coords]
-        if missing:
-            raise RuntimeError(
-                f"Missing {len(missing)}/{len(needed)} chain instances in DEF output. "
-                f"First missing: {missing[0]}"
-            )
-
-        metrics = [
-            compute_chain_metrics(
-                name,
-                order,
-                coords,
-                units,
-                compute_nearest_neighbor=args.nearest_neighbor,
-            )
-            for name, order in chains.items()
-        ]
-        metrics.sort(key=lambda m: m.name)
-
-        total_um = (
-            sum(m.manhattan_um for m in metrics if m.manhattan_um is not None)
-            if units
-            else None
+    missing = [inst for inst in needed if inst not in pins]
+    if missing:
+        raise RuntimeError(
+            f"Missing {len(missing)}/{len(needed)} chain instances in pin report output. "
+            f"First missing: {missing[0]}"
         )
 
-        print(f"Chains: {len(metrics)}")
-        if units:
-            print(f"DEF units: {units} DBU per micron")
-        for m in metrics:
-            if m.manhattan_um is None:
-                print(f"{m.name}: cells={m.cells} manhattan_dbu={m.manhattan_dbu}")
-                continue
-            print(
-                f"{m.name}: cells={m.cells} "
-                f"manhattan_um={m.manhattan_um:.3f} "
-                f"avg_step_um={m.avg_step_um:.3f} "
-                f"naive_lex_um={m.naive_lex_manhattan_um:.3f} "
-                f"naive_lex_ratio={m.naive_lex_ratio:.3f}"
-                + (
-                    f" nn_um={m.nearest_neighbor_manhattan_um:.3f} "
-                    f"openroad_over_nn={m.openroad_over_nn_ratio:.3f}"
-                    if m.nearest_neighbor_manhattan_um is not None
-                    and m.openroad_over_nn_ratio is not None
-                    else ""
-                )
-            )
-        if total_um is not None:
-            print(f"total_manhattan_um={total_um:.3f}")
-        edges = sum(max(0, len(order) - 1) for order in chains.values())
-        print(f"total_cells={len(needed)} total_edges={edges}")
+    metrics = [
+        compute_chain_metrics(
+            name,
+            order,
+            pins,
+            units,
+            compute_nearest_neighbor=args.nearest_neighbor,
+        )
+        for name, order in chains.items()
+    ]
+    metrics.sort(key=lambda m: m.name)
 
-        if args.out_json:
-            payload = {
-                "units_dbu_per_micron": units,
-                "chains": [asdict(m) for m in metrics],
-                "total_manhattan_um": total_um,
-            }
-            args.out_json.parent.mkdir(parents=True, exist_ok=True)
-            args.out_json.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    total_um = (
+        sum(m.manhattan_um for m in metrics if m.manhattan_um is not None)
+        if units
+        else None
+    )
 
-        if args.out_svg:
-            if not units:
-                raise RuntimeError("DEF units missing; cannot write SVG.")
-            _write_scan_svg(
-                args.out_svg.resolve(),
-                chains=chains,
-                coords_dbu=coords,
-                units_dbu_per_micron=units,
+    print(f"Chains: {len(metrics)}")
+    if units:
+        print(f"DBU per micron: {units}")
+    for m in metrics:
+        if m.manhattan_um is None:
+            print(f"{m.name}: cells={m.cells} manhattan_dbu={m.manhattan_dbu}")
+            continue
+        print(
+            f"{m.name}: cells={m.cells} "
+            f"manhattan_um={m.manhattan_um:.3f} "
+            f"avg_step_um={m.avg_step_um:.3f} "
+            f"naive_lex_um={m.naive_lex_manhattan_um:.3f} "
+            f"naive_lex_ratio={m.naive_lex_ratio:.3f}"
+            + (
+                f" nn_um={m.nearest_neighbor_manhattan_um:.3f} "
+                f"openroad_over_nn={m.openroad_over_nn_ratio:.3f}"
+                if m.nearest_neighbor_manhattan_um is not None
+                and m.openroad_over_nn_ratio is not None
+                else ""
             )
+        )
+    if total_um is not None:
+        print(f"total_manhattan_um={total_um:.3f}")
+    edges = sum(max(0, len(order) - 1) for order in chains.values())
+    print(f"total_cells={len(needed)} total_edges={edges}")
+
+    if args.out_json:
+        payload = {
+            "units_dbu_per_micron": units,
+            "chains": [asdict(m) for m in metrics],
+            "total_manhattan_um": total_um,
+        }
+        args.out_json.parent.mkdir(parents=True, exist_ok=True)
+        args.out_json.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+    if args.out_svg:
+        if not units:
+            raise RuntimeError("DBU-per-micron missing; cannot write SVG.")
+        _write_scan_svg(
+            args.out_svg.resolve(),
+            chains=chains,
+            pins_dbu=pins,
+            units_dbu_per_micron=units,
+        )
 
     return 0
 
