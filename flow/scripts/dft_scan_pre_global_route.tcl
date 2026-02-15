@@ -33,6 +33,34 @@ proc dft_get_env_bool {name default_value} {
   return $default_value
 }
 
+proc dft_odb_has_scan_chains {} {
+  set block [ord::get_db_block]
+  if { $block == "NULL" } {
+    return 0
+  }
+  set dft [$block getDft]
+  if { $dft == "NULL" } {
+    return 0
+  }
+  return [expr {[llength [$dft getScanChains]] > 0}]
+}
+
+proc dft_maybe_import_scandef {} {
+  set import_scandef [dft_get_env DFT_IMPORT_SCANDEF_FILE ""]
+  if { $import_scandef == "" } {
+    return
+  }
+  if { ![file exists $import_scandef] } {
+    error "DFT: DFT_IMPORT_SCANDEF_FILE '$import_scandef' not found"
+  }
+  if { [dft_odb_has_scan_chains] } {
+    puts "DFT: SCANDEF import skipped (ODB already has scan chains)"
+    return
+  }
+  puts "DFT: importing SCANDEF '$import_scandef'"
+  read_def -incremental $import_scandef
+}
+
 proc dft_apply_name_pattern {pattern value} {
   # Supports one optional "{}" placeholder.
   if { [string first "{}" $pattern] >= 0 } {
@@ -382,6 +410,11 @@ proc dft_place_pin_near_inst {pin_name inst_name} {
 proc dft_place_scan_ports_from_plan {} {
   # Place scan ports near their corresponding chain endpoints to reduce scan
   # I/O wirelength (especially when multiple chains are enabled).
+  if { [dft_get_env_bool DFT_USE_EXISTING_SCAN_CHAINS 0] } {
+    puts "DFT: using existing ODB scan chains; skipping scan port placement"
+    return
+  }
+
   set chain_count_env [dft_get_env DFT_CHAIN_COUNT ""]
   set max_chains_env [dft_get_env DFT_MAX_CHAINS ""]
   set max_length_env [dft_get_env DFT_MAX_CHAIN_LENGTH ""]
@@ -1416,6 +1449,9 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   set scan_enable_pattern [dft_get_env DFT_SCAN_ENABLE_NAME_PATTERN "scan_enable_{}"]
   set scan_in_pattern [dft_get_env DFT_SCAN_IN_NAME_PATTERN "scan_in_{}"]
   set scan_out_pattern [dft_get_env DFT_SCAN_OUT_NAME_PATTERN "scan_out_{}"]
+  set use_existing_scan_chains [dft_get_env_bool DFT_USE_EXISTING_SCAN_CHAINS 0]
+  set split_multibit_scan_cells [dft_get_env_bool DFT_SPLIT_MULTIBIT_SCAN_CELLS 0]
+  set error_on_power_domain_crossings [dft_get_env_bool DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS 0]
 
   set max_length [dft_get_env DFT_MAX_CHAIN_LENGTH ""]
   if { $max_length == "" } {
@@ -1457,6 +1493,9 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
     -scan_enable_name_pattern $scan_enable_pattern \
     -scan_in_name_pattern $scan_in_pattern \
     -scan_out_name_pattern $scan_out_pattern \
+    -use_existing_scan_chains $use_existing_scan_chains \
+    -split_multibit_scan_cells $split_multibit_scan_cells \
+    -error_on_power_domain_crossings $error_on_power_domain_crossings \
   ]
   if { $scan_order_metric != "" } {
     lappend dft_args -scan_order_metric $scan_order_metric
@@ -1692,6 +1731,7 @@ proc dft_delete_unconnected_scan_nets {} {
   }
 }
 
+dft_maybe_import_scandef
 dft_apply_dft_config
 
 dft_place_scan_ports_from_plan

@@ -10,14 +10,14 @@ Implementation notes (what the code actually does):
 - Planning/partitioning: hash-domain partitioning by clock/polarity (`tools/OpenROAD/src/dft/src/clock_domain/ClockDomainHash.cpp`) + multi-chain partitioning (`tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`).
 - Ordering/optimization: directed “TSP path” heuristic per chain (`tools/OpenROAD/src/dft/src/architect/Opt.cpp`) using SI/SO *pin* locations (`tools/OpenROAD/src/dft/src/utils/ScanPin.cpp`).
   - Metrics: `PLACEMENT` (pin-to-pin Manhattan + superlinear long-edge penalty) and `PIN_TO_NET` (routing-aware pin-to-net to route guides/routes + placement tie-break).
-  - Solvers: `HEURISTIC`, `SCANOPT`, and `UCLA_SCANOPT` (restricted; falls back when unsupported).
+  - Solvers: `HEURISTIC`, `SCANOPT` (UCLA ScanOptpack; `PLACEMENT` only; used as a preference where possible), and `ILS` (OpenROAD in-tree; used for `PIN_TO_NET` and as fallback).
 - Stitching: netlist update + optional lockup insertion (`tools/OpenROAD/src/dft/src/stitch/ScanStitch.cpp`).
 - Warn-only checks: clock gates, tri-state drivers, power-domain crossings (`tools/OpenROAD/src/dft/src/Dft.cpp`).
 
 Known gaps (explicitly called out as “Future extensions” below):
-- Multi-bit MBFF / multi-bit ScanFF support.
-- Power-domain crossings are warn-only (no automatic level shifter / isolation insertion).
-- No SCANDEF import; external “import” is via explicit ordering/constraints inputs.
+- Multi-bit MBFF / multi-bit ScanFF support: chain-length accounting via Liberty sequential-bit counting, plus optional modeling of cells with multiple external SI/SO pairs via `set_dft_config -split_multibit_scan_cells 1` (creates per-pair scan elements named `inst__dft_scanbit<N>`).
+- Power-domain crossings are warn-only by default (no automatic level shifter / isolation insertion), but can be made fatal with `set_dft_config -error_on_power_domain_crossings 1`.
+- SCANDEF import: supported for using pre-defined scan chains via `read_def -incremental` + `set_dft_config -use_existing_scan_chains 1` (stitch in imported order).
 - “Congestion avoidance” is not a first-class model; the closest heuristic is `PIN_TO_NET` ordering against route guides/routes.
 - “Blockage avoidance” is supported as a detour penalty term in ordering cost (`set_dft_config -blockage_weight`, default `1.0`).
 
@@ -45,7 +45,7 @@ The user can specify the number of scan chains in the solution.  This is also a 
 The scan chain optimization should comprehend both feasibility and balance.
 For example, if max_length * max_num_chains < num_ScanFFs, then no solution will satisfy the constraints and an error should be thrown.
 As another example, if the number of ScanFFs in a specified scan group is larger than max_length, then no solution is possible.
-Length balancing over all scan chains produced reflects the goal of reducing time spent on the (ATE) tester. A max_imbalance parameter with default of 30 (percent) should be made available to the user.  This adds a simple constraint: the ratio of the lengths of any two scan chains should never exceed (1 + max_imbalance / 100), e.g., a ratio of 1.3 with the default value of 30.
+Length balancing over all scan chains produced reflects the goal of reducing time spent on the (ATE) tester. A max_imbalance parameter with default of 2 (percent) should be made available to the user.  This adds a simple constraint: the ratio of the lengths of any two scan chains should never exceed (1 + max_imbalance / 100), e.g., a ratio of 1.02 with the default value of 2.
 Clock mixing  
 Clock mixing refers to stitching ScanFFs from multiple clock domains into a single chain.
 See clock_mixing in set_dft_config.
@@ -72,9 +72,14 @@ The tool should “freely” stitch ScanFFs from multiple power domains only if 
 If ScanFFs from different voltage domains (at different voltage levels) are adjacent in a scan chain, then a level shifter must be inserted.
 If either domain is switched, then an isolation cell is needed.
 Initially, the tool should throw warnings (but not attempt to implement a correct solution) if (b) or (c) hold.
-Support for importing and exporting scan chains to support external tools
+Support for importing and exporting scan chains to support external tools (SCANDEF)
+Implemented:
+- Export: `write_scandef -file <path>` (writes DEF-style `SCANCHAINS` from ODB scan chains created by `execute_dft_plan`).
+- Import + stitch: `read_def -incremental <scandef>` + `set_dft_config -use_existing_scan_chains 1` + `execute_dft_plan` (stitches in imported order).
+
+Future extensions:
 This can help future scan insertion tools like Difetto
-The tool should be able to take in a list of scan cells 
+The tool should be able to take in a list of scan cells
 Sometimes, a scan cell is composed of multiple cells e.g, Fault generates an FF and mux pair if the PDK does not contain scan cells
 These cells should be connected together in anywhere from 1 to N initial chains, with a primary input/output per chain. 
 Cells may also be connected hierarchically in groups (see 3.) 

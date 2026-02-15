@@ -14,6 +14,25 @@ proc dft_get_env {name default_value} {
   return $default_value
 }
 
+proc dft_get_env_bool {name default_value} {
+  set raw [dft_get_env $name $default_value]
+  set v [string tolower [string trim "$raw"]]
+  if { $v == "" } {
+    return $default_value
+  }
+  if { $v in {"1" "true" "yes" "y" "on"} } {
+    return 1
+  }
+  if { $v in {"0" "false" "no" "n" "off"} } {
+    return 0
+  }
+  # Fall back to numeric interpretation if possible.
+  if { ![catch {expr {$v != 0}} as_bool] } {
+    return $as_bool
+  }
+  return $default_value
+}
+
 proc dft_apply_name_pattern {pattern value} {
   # Supports one optional "{}" placeholder.
   if { [string first "{}" $pattern] >= 0 } {
@@ -53,6 +72,9 @@ set polarity_mode [dft_get_env DFT_POLARITY_MODE "strict"]
 set scan_enable_pattern [dft_get_env DFT_SCAN_ENABLE_NAME_PATTERN "scan_enable_{}"]
 set scan_in_pattern [dft_get_env DFT_SCAN_IN_NAME_PATTERN "scan_in_{}"]
 set scan_out_pattern [dft_get_env DFT_SCAN_OUT_NAME_PATTERN "scan_out_{}"]
+set use_existing_scan_chains [dft_get_env_bool DFT_USE_EXISTING_SCAN_CHAINS 0]
+set split_multibit_scan_cells [dft_get_env_bool DFT_SPLIT_MULTIBIT_SCAN_CELLS 0]
+set error_on_power_domain_crossings [dft_get_env_bool DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS 0]
 set max_length [dft_get_env DFT_MAX_CHAIN_LENGTH ""]
 if { $max_length == "" } {
 	set max_length [dft_get_env DFT_MAX_LENGTH ""]
@@ -92,13 +114,16 @@ set max_chains [dft_get_env DFT_MAX_CHAINS ""]
 set dft_args [list \
   -clock_mixing $clock_mixing \
   -polarity_mode $polarity_mode \
-	-scan_enable_name_pattern $scan_enable_pattern \
-	-scan_in_name_pattern $scan_in_pattern \
-	-scan_out_name_pattern $scan_out_pattern \
+		-scan_enable_name_pattern $scan_enable_pattern \
+		-scan_in_name_pattern $scan_in_pattern \
+		-scan_out_name_pattern $scan_out_pattern \
+	-use_existing_scan_chains $use_existing_scan_chains \
+  -split_multibit_scan_cells $split_multibit_scan_cells \
+  -error_on_power_domain_crossings $error_on_power_domain_crossings \
 ]
 if { $scan_order_metric != "" } {
   lappend dft_args -scan_order_metric $scan_order_metric
-}
+	}
 if { $scan_order_solver != "" } {
   lappend dft_args -scan_order_solver $scan_order_solver
 }
@@ -189,6 +214,17 @@ set_dft_config {*}$dft_args
 
 # Replace functional flops with scan-capable flops.
 scan_replace
+
+# Optional: import a user-provided SCANDEF/DEF `SCANCHAINS` section so scan
+# planning/stitching can reuse the existing chain order stored in ODB.
+set import_scandef [dft_get_env DFT_IMPORT_SCANDEF_FILE ""]
+if { $import_scandef != "" } {
+  if { ![file exists $import_scandef] } {
+    error "DFT: DFT_IMPORT_SCANDEF_FILE '$import_scandef' not found"
+  }
+  puts "DFT: importing SCANDEF '$import_scandef'"
+  read_def -incremental $import_scandef
+}
 
 proc dft_ensure_scan_port {port_name io_type} {
   set block [ord::get_db_block]
@@ -291,6 +327,19 @@ proc dft_place_scan_ports_minimal {scan_enable_name scan_in_pattern scan_out_pat
       dft_place_pin_safe $out_name $io_layer $xMax $y
     }
   }
+}
+
+# In use-existing-scan-chains mode, scan-in/out endpoints should come from the
+# imported/stored ODB scan-chain objects. Avoid creating new default scan_in/out
+# ports here (they would be unconnected and can confuse downstream validation).
+if { $use_existing_scan_chains } {
+  puts "DFT: using existing ODB scan chains; skipping scan_in/out port creation"
+  set scan_enable_name [dft_apply_name_pattern $scan_enable_pattern 0]
+  if { ![dft_name_pattern_is_inst_pin $scan_enable_name] } {
+    dft_ensure_scan_port $scan_enable_name INPUT
+  }
+  dft_set_scan_enable_case_analysis $scan_enable_name
+  return
 }
 
 # Infer how many chains will be created with the current DFT config so we can

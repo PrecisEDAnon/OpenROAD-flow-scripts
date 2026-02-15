@@ -1054,7 +1054,10 @@ DFT_SCAN_ORDER_METRIC:
 DFT_SCAN_ORDER_SOLVER:
   description: >
     OpenROAD internal scan ordering solver used when `DFT_SCAN_SOLVER=openroad`.
-    Pass-through to `set_dft_config -scan_order_solver` (`HEURISTIC`, `SCANOPT`).
+    Pass-through to `set_dft_config -scan_order_solver` (`HEURISTIC`, `SCANOPT`,
+    `ILS`). `SCANOPT` uses the UCLA ScanOptpack reference solver (`PLACEMENT`
+    only). `ILS` selects the OpenROAD in-tree local search solver (also used as
+    fallback for `PIN_TO_NET`).
   default: SCANOPT
   stages:
     - floorplan
@@ -1077,11 +1080,12 @@ DFT_SCANOPT_SEED:
     - grt
 DFT_SCANOPT_TIME_LIMIT:
   description: >
-    Total time budget (seconds) for OpenROAD scan ordering when
-    `DFT_SCAN_ORDER_SOLVER=SCANOPT` (pass-through to `set_dft_config
-    -scanopt_time_limit`). OpenROAD splits this budget across all scan chains
-    to keep total runtime bounded as chain count increases. `0` means unlimited.
-  default: 15
+    Total time budget (seconds) for OpenROAD in-tree scan ordering (`ILS`)
+    (pass-through to `set_dft_config -scanopt_time_limit`). OpenROAD splits this
+    budget across all scan chains to keep total runtime bounded as chain count
+    increases. `0` means unlimited. Note: UCLA `SCANOPT` does not currently
+    honor this time limit for `PLACEMENT`.
+  default: 300
   stages:
     - floorplan
     - grt
@@ -1125,6 +1129,42 @@ DFT_MAX_IMBALANCE:
     Maximum allowed chain-length imbalance (percent). Pass-through to
     `set_dft_config -max_imbalance`.
   default: 2
+  stages:
+    - floorplan
+    - grt
+DFT_USE_EXISTING_SCAN_CHAINS:
+  description: >
+    When set, pass-through to `set_dft_config -use_existing_scan_chains` so
+    OpenROAD uses scan chains already stored in ODB (for example imported via
+    `read_def -incremental` from a SCANDEF/DEF `SCANCHAINS` section) as the plan
+    for `report_dft_plan` and `execute_dft_plan`.
+  default: 0
+  stages:
+    - floorplan
+    - grt
+DFT_IMPORT_SCANDEF_FILE:
+  description: >
+    Optional path to a SCANDEF/DEF file containing a `SCANCHAINS` section to
+    import via `read_def -incremental`. Used with
+    `DFT_USE_EXISTING_SCAN_CHAINS=1` to stitch in a user-defined scan order.
+  stages:
+    - floorplan
+    - grt
+DFT_SPLIT_MULTIBIT_SCAN_CELLS:
+  description: >
+    When set, pass-through to `set_dft_config -split_multibit_scan_cells` so
+    scan cells with multiple external scan-in/out pairs (e.g. `SI[0..]`/`SO[0..]`)
+    are split into multiple scan elements during planning/stitching.
+  default: 0
+  stages:
+    - floorplan
+    - grt
+DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS:
+  description: >
+    When set, pass-through to `set_dft_config -error_on_power_domain_crossings`
+    so power-domain crossing checks (voltage mismatch, switched domains, or
+    incomplete assignments) fail instead of warning.
+  default: 0
   stages:
     - floorplan
     - grt

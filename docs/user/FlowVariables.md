@@ -95,7 +95,7 @@ configuration file.
 | <a name="ABC_DRIVER_CELL"></a>ABC_DRIVER_CELL| Default driver cell used during ABC synthesis.| |
 | <a name="ABC_LOAD_IN_FF"></a>ABC_LOAD_IN_FF| During synthesis set_load value used.| |
 | <a name="ABSTRACT_SOURCE"></a>ABSTRACT_SOURCE| Which .odb file to use to create abstract| |
-| <a name="ADDER_MAP_FILE"></a>ADDER_MAP_FILE| List of adders treated as a black box by Yosys.| |
+| <a name="ADDER_MAP_FILE"></a>ADDER_MAP_FILE| Optional mapping file supplied to Yosys to map adders| |
 | <a name="ADDITIONAL_FILES"></a>ADDITIONAL_FILES| Additional files to be added to `make issue` archive.| |
 | <a name="ADDITIONAL_GDS"></a>ADDITIONAL_GDS| Hardened macro GDS files listed here.| |
 | <a name="ADDITIONAL_LEFS"></a>ADDITIONAL_LEFS| Hardened macro LEF view files listed here. The LEF information of the macros is immutable and used throughout all stages. Stored in the .odb file.| |
@@ -107,7 +107,7 @@ configuration file.
 | <a name="CDL_FILES"></a>CDL_FILES| Insert additional Circuit Description Language (`.cdl`) netlist files.| |
 | <a name="CELL_PAD_IN_SITES_DETAIL_PLACEMENT"></a>CELL_PAD_IN_SITES_DETAIL_PLACEMENT| Cell padding on both sides in site widths to ease routability in detail placement.| 0|
 | <a name="CELL_PAD_IN_SITES_GLOBAL_PLACEMENT"></a>CELL_PAD_IN_SITES_GLOBAL_PLACEMENT| Cell padding on both sides in site widths to ease routability during global placement.| 0|
-| <a name="CLKGATE_MAP_FILE"></a>CLKGATE_MAP_FILE| List of cells for gating clock treated as a black box by Yosys.| |
+| <a name="CLKGATE_MAP_FILE"></a>CLKGATE_MAP_FILE| Optional mapping file supplied to Yosys to map clock gating cells| |
 | <a name="CLUSTER_FLOPS"></a>CLUSTER_FLOPS| Minimum number of flip-flops per sink cluster.| 0|
 | <a name="CORE_AREA"></a>CORE_AREA| The core area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
 | <a name="CORE_ASPECT_RATIO"></a>CORE_ASPECT_RATIO| The core aspect ratio (height / width). This value is ignored if `CORE_UTILIZATION` is undefined.| 1.0|
@@ -128,13 +128,17 @@ configuration file.
 | <a name="DETAILED_ROUTE_ARGS"></a>DETAILED_ROUTE_ARGS| Add additional arguments for debugging purposes during detail route.| |
 | <a name="DETAILED_ROUTE_END_ITERATION"></a>DETAILED_ROUTE_END_ITERATION| Maximum number of iterations.| 64|
 | <a name="DFF_LIB_FILES"></a>DFF_LIB_FILES| Technology mapping liberty files for flip-flops.| |
+| <a name="DFF_MAP_FILE"></a>DFF_MAP_FILE| Optional mapping file supplied to Yosys to map D flip-flops| |
+| <a name="DFT_BLOCKAGE_WEIGHT"></a>DFT_BLOCKAGE_WEIGHT| Blockage-aware scan ordering penalty weight. Adds an estimated detour cost when a straight rectilinear scan connection would cross hard macros / placement blockages. Pass-through to `set_dft_config -blockage_weight`.| 1.0|
 | <a name="DFT_BUFFER_SCAN_ENABLE"></a>DFT_BUFFER_SCAN_ENABLE| Buffer/split `scan_enable_0` to reduce fanout before routing (applies after stitching).| 1|
 | <a name="DFT_CHAIN_COUNT"></a>DFT_CHAIN_COUNT| Exact number of scan chains to generate (pass-through to `set_dft_config -chain_count`).| |
 | <a name="DFT_CLOCK_MIXING"></a>DFT_CLOCK_MIXING| How scan architect mixes scan flops across clock domains. Pass-through to `set_dft_config -clock_mixing` (`clock_mix` or `no_mix`).| no_mix|
 | <a name="DFT_DEFER_STITCH"></a>DFT_DEFER_STITCH| When set, skip stitching in `PRE_GLOBAL_ROUTE_TCL` so stitching can be run in `POST_GLOBAL_ROUTE_TCL` (useful for routing-aware ordering).| 0|
 | <a name="DFT_DONT_TOUCH_SCAN_NETS"></a>DFT_DONT_TOUCH_SCAN_NETS| Mark scan-only nets as `dont_touch` to avoid QoR-driven optimization on scan-only nets (scan_enable tree remains optimizable). Applies after stitching.| 1|
 | <a name="DFT_ENABLE"></a>DFT_ENABLE| Enable ORFS DFT/scan insertion using the built-in hook scripts. When set, defaults `POST_FLOORPLAN_TCL` and `PRE_GLOBAL_ROUTE_TCL` to the ORFS DFT hook scripts unless they are already set.| 0|
+| <a name="DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS"></a>DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS| When set, pass-through to `set_dft_config -error_on_power_domain_crossings` so power-domain crossing checks (voltage mismatch, switched domains, or incomplete assignments) fail instead of warning.| 0|
 | <a name="DFT_EXCLUDE_SHIFT_REGISTERS"></a>DFT_EXCLUDE_SHIFT_REGISTERS| Automatically detect simple functional shift-register chains (direct Q→D) and exclude them from scan_replace and scan planning. Pass-through to OpenROAD `set_dft_config -exclude_shift_registers` (boolean).| 0|
+| <a name="DFT_IMPORT_SCANDEF_FILE"></a>DFT_IMPORT_SCANDEF_FILE| Optional path to a SCANDEF/DEF file containing a `SCANCHAINS` section to import via `read_def -incremental`. Used with `DFT_USE_EXISTING_SCAN_CHAINS=1` to stitch in a user-defined scan order.| |
 | <a name="DFT_INSERT_LOCKUP"></a>DFT_INSERT_LOCKUP| Force lockup insertion during scan stitching. Pass-through to `set_dft_config -insert_lockup` (boolean). Note: when `DFT_CLOCK_MIXING=clock_mix`, OpenROAD requires lockup insertion for domain crossings; you must configure lockup cells/pins.| |
 | <a name="DFT_LOCKUP_CELL_FALLING"></a>DFT_LOCKUP_CELL_FALLING| Lockup latch master cell used when the destination scan flop is falling-edge triggered. Pass-through to `set_dft_config -lockup_cell_falling`.| |
 | <a name="DFT_LOCKUP_CELL_RISING"></a>DFT_LOCKUP_CELL_RISING| Lockup latch master cell used when the destination scan flop is rising-edge triggered. Pass-through to `set_dft_config -lockup_cell_rising`.| |
@@ -149,7 +153,7 @@ configuration file.
 | <a name="DFT_MAX_LENGTH"></a>DFT_MAX_LENGTH| Alias for `DFT_MAX_CHAIN_LENGTH` (pass-through to `set_dft_config -max_length`).| |
 | <a name="DFT_PLACE_SCAN_ENABLE_PORT"></a>DFT_PLACE_SCAN_ENABLE_PORT| When enabled, also re-place `scan_enable_0` (defaults to `DFT_PLACE_SCAN_PORTS` when set).| |
 | <a name="DFT_PLACE_SCAN_PORTS"></a>DFT_PLACE_SCAN_PORTS| When enabled, re-place `scan_in_N`/`scan_out_N` ports near their chain endpoints before stitching (helps multi-chain QoR). When unset, ORFS enables it by default when multi-chain is configured.| |
-| <a name="DFT_POLARITY_MODE"></a>DFT_POLARITY_MODE| How scan architect handles rising-edge and falling-edge scan flops within a scan chain. Pass-through to `set_dft_config -polarity_mode` (`mid` or `strict`). `mid` allows mixed polarity per chain by stitching falling-edge flops before rising-edge flops. `strict` forbids mixing polarities within a chain, requiring separate chains when both polarities are present.| mid|
+| <a name="DFT_POLARITY_MODE"></a>DFT_POLARITY_MODE| How scan architect handles mixed clock-edge polarity within each chain. Pass-through to `set_dft_config -polarity_mode` (`mid` or `strict`).| strict|
 | <a name="DFT_PREFER_QBAR"></a>DFT_PREFER_QBAR| Prefer using the complemented output (`QN`/`Q_N`) as scan-out when the library does not tag a scan-out port (can reduce added load on functional `Q` nets, at the cost of introducing inversion in the scan path). Pass-through to OpenROAD `set_dft_config -prefer_qbar` (boolean).| 0|
 | <a name="DFT_REPORT_SCAN_WIRELENGTH"></a>DFT_REPORT_SCAN_WIRELENGTH| Emit scan wirelength report files and scan-chain cost metrics (placement proxy) in the pre-global-route and final stages.| 1|
 | <a name="DFT_ROUTE_AWARE"></a>DFT_ROUTE_AWARE| When `DFT_ENABLE=1`, enable trial-route-aware scan ordering by deferring scan stitching until after the first global route (uses `POST_GLOBAL_ROUTE_TCL` and sets `DFT_DEFER_STITCH=1`). Defaults `DFT_SCAN_ORDER_METRIC=PIN_TO_NET` unless it is already set.| 0|
@@ -157,7 +161,7 @@ configuration file.
 | <a name="DFT_SCANOPT_ROUNDS"></a>DFT_SCANOPT_ROUNDS| Iterated local-search rounds for OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config -scanopt_rounds`).| 500000|
 | <a name="DFT_SCANOPT_SEED"></a>DFT_SCANOPT_SEED| Random seed for OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config -scanopt_seed`).| 1|
 | <a name="DFT_SCANOPT_TEMP_CONTROL"></a>DFT_SCANOPT_TEMP_CONTROL| Enable ScanOpt temperature control (optional uphill-move acceptance) for OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config -scanopt_temp_control`). When enabled, ScanOpt may accept a worse move with probability `exp(-Δ/temperature)` to escape local minima; use `DFT_SCANOPT_SEED` for reproducibility.| |
-| <a name="DFT_SCANOPT_TIME_LIMIT"></a>DFT_SCANOPT_TIME_LIMIT| Total time budget (seconds) for OpenROAD scan ordering when `DFT_SCAN_ORDER_SOLVER=SCANOPT` (pass-through to `set_dft_config -scanopt_time_limit`). OpenROAD splits this budget across all scan chains to keep total runtime bounded as chain count increases. `0` means unlimited.| 15|
+| <a name="DFT_SCANOPT_TIME_LIMIT"></a>DFT_SCANOPT_TIME_LIMIT| Total time budget (seconds) for OpenROAD in-tree scan ordering (`ILS`) (pass-through to `set_dft_config -scanopt_time_limit`). OpenROAD splits this budget across all scan chains to keep total runtime bounded as chain count increases. `0` means unlimited. Note: UCLA `SCANOPT` does not currently honor this time limit for `PLACEMENT`.| 300|
 | <a name="DFT_SCANOPT_T_DIV"></a>DFT_SCANOPT_T_DIV| Temperature divisor for ScanOpt temp control (pass-through to `set_dft_config -scanopt_t_div`). Larger values reduce uphill acceptance.| |
 | <a name="DFT_SCAN_ENABLE_BUFFER_CELL"></a>DFT_SCAN_ENABLE_BUFFER_CELL| Buffer cell to use for `scan_enable_0` buffering (defaults to `MIN_BUF_CELL_AND_PORTS[0]`).| |
 | <a name="DFT_SCAN_ENABLE_BUFFER_LEVELS"></a>DFT_SCAN_ENABLE_BUFFER_LEVELS| Max buffering levels for `scan_enable_0` buffering.| 3|
@@ -167,7 +171,7 @@ configuration file.
 | <a name="DFT_SCAN_ORDER_CONSTRAINTS_FILE"></a>DFT_SCAN_ORDER_CONSTRAINTS_FILE| Optional scan ordering constraints file (ScanOpt-style). Directives: `default_priority <0..127>`, `group [<name>] [<priority>] <inst|group...>`, `path [<name>] [<priority>] inst0 inst1 ...`, `fixed_edge <instA> <instB>`, `before <inst|group> <inst|group>`, `chain <name> [begin <x> <y>|<port|inst/pin>] [end <x> <y>|<port|inst/pin>]`, `assign <chain> <inst|group...>`, `exclude <inst|group...>`.| |
 | <a name="DFT_SCAN_ORDER_FILE"></a>DFT_SCAN_ORDER_FILE| When `DFT_SCAN_SOLVER=order_file`, path to a whitespace-separated order file describing the exact per-chain scan ordering. Format: `chain_name inst0 inst1 ...` (one chain per line). For single-chain designs, a single line `inst0 inst1 ...` is also accepted.| |
 | <a name="DFT_SCAN_ORDER_METRIC"></a>DFT_SCAN_ORDER_METRIC| Metric for ordering scan cells within each chain. `PLACEMENT` uses cell-to-cell Manhattan distance. `PIN_TO_NET` uses pin-to-net distance to global-route guides (or detailed routes when present), falling back to placement distance.| |
-| <a name="DFT_SCAN_ORDER_SOLVER"></a>DFT_SCAN_ORDER_SOLVER| OpenROAD internal scan ordering solver used when `DFT_SCAN_SOLVER=openroad`. Pass-through to `set_dft_config -scan_order_solver` (`HEURISTIC`, `SCANOPT`).| SCANOPT|
+| <a name="DFT_SCAN_ORDER_SOLVER"></a>DFT_SCAN_ORDER_SOLVER| OpenROAD internal scan ordering solver used when `DFT_SCAN_SOLVER=openroad`. Pass-through to `set_dft_config -scan_order_solver` (`HEURISTIC`, `SCANOPT`, `ILS`). `SCANOPT` uses the UCLA ScanOptpack reference solver (`PLACEMENT` only). `ILS` selects the OpenROAD in-tree local search solver (also used as fallback for `PIN_TO_NET`).| SCANOPT|
 | <a name="DFT_SCAN_OUT_NAME_PATTERN"></a>DFT_SCAN_OUT_NAME_PATTERN| Pattern used by OpenROAD DFT to find or create scan-out loads during stitching (pass-through to `set_dft_config -scan_out_name_pattern`). Supports an optional `{}` placeholder, replaced by the chain ordinal starting at `0`. If the pattern contains an unescaped `/`, OpenROAD interprets it as `instance/pin` instead of a top-level port.| scan_out_{}|
 | <a name="DFT_SCAN_SOLVER"></a>DFT_SCAN_SOLVER| Solver used for ordering scan cells within each chain. `openroad` uses OpenROAD's built-in heuristic. `scanopt_next` uses ORFS' bundled reference solver (or an external binary via `DFT_SCAN_SOLVER_BIN`). `order_file` uses an explicit per-chain ordering from `DFT_SCAN_ORDER_FILE`.| openroad|
 | <a name="DFT_SCAN_SOLVER_ARGS"></a>DFT_SCAN_SOLVER_ARGS| Extra arguments (as a whitespace-separated list) passed to the scan solver invocation.| |
@@ -176,14 +180,15 @@ configuration file.
 | <a name="DFT_SCAN_SOLVER_MAX_2OPT_ITERS"></a>DFT_SCAN_SOLVER_MAX_2OPT_ITERS| Max 2-opt iterations for the bundled `scanopt_next` solver (tuning knob).| 20000|
 | <a name="DFT_SCAN_SOLVER_SEED"></a>DFT_SCAN_SOLVER_SEED| Random seed passed to the scan solver (when supported).| 0|
 | <a name="DFT_SHIFT_REGISTER_MIN_LENGTH"></a>DFT_SHIFT_REGISTER_MIN_LENGTH| Minimum chain length to classify as a shift register when `DFT_EXCLUDE_SHIFT_REGISTERS=1`. Pass-through to OpenROAD `set_dft_config -shift_register_min_length` (must be `>= 2`).| 4|
+| <a name="DFT_SPLIT_MULTIBIT_SCAN_CELLS"></a>DFT_SPLIT_MULTIBIT_SCAN_CELLS| When set, pass-through to `set_dft_config -split_multibit_scan_cells` so scan cells with multiple external scan-in/out pairs (e.g. `SI[0..]`/`SO[0..]`) are split into multiple scan elements during planning/stitching.| 0|
 | <a name="DFT_TIMING_BUFFER_CELL"></a>DFT_TIMING_BUFFER_CELL| Optional buffer master cell used on timing-critical scan links (between scan flops in the same clock domain). Pass-through to `set_dft_config -timing_buffer_cell`.| |
 | <a name="DFT_TIMING_BUFFER_IN_PIN"></a>DFT_TIMING_BUFFER_IN_PIN| Timing buffer input pin name. Pass-through to `set_dft_config -timing_buffer_in_pin`.| A|
 | <a name="DFT_TIMING_BUFFER_OUT_PIN"></a>DFT_TIMING_BUFFER_OUT_PIN| Timing buffer output pin name. Pass-through to `set_dft_config -timing_buffer_out_pin`.| X|
 | <a name="DFT_TIMING_CRITICAL_SLACK"></a>DFT_TIMING_CRITICAL_SLACK| Slack threshold used by OpenROAD timing-aware scan ordering. `0` means only negative slack is considered critical. Pass-through to `set_dft_config -timing_critical_slack`.| 0|
 | <a name="DFT_TIMING_HOLD_WEIGHT"></a>DFT_TIMING_HOLD_WEIGHT| Timing-aware scan ordering penalty weight for hold slack at the source scan-out pin. Pass-through to `set_dft_config -timing_hold_weight`.| 0|
 | <a name="DFT_TIMING_SETUP_WEIGHT"></a>DFT_TIMING_SETUP_WEIGHT| Timing-aware scan ordering penalty weight for setup slack at the source scan-out pin. Pass-through to `set_dft_config -timing_setup_weight`.| 0|
+| <a name="DFT_USE_EXISTING_SCAN_CHAINS"></a>DFT_USE_EXISTING_SCAN_CHAINS| When set, pass-through to `set_dft_config -use_existing_scan_chains` so OpenROAD uses scan chains already stored in ODB (for example imported via `read_def -incremental` from a SCANDEF/DEF `SCANCHAINS` section) as the plan for `report_dft_plan` and `execute_dft_plan`.| 0|
 | <a name="DFT_VERTICAL_WEIGHT"></a>DFT_VERTICAL_WEIGHT| Preferred-direction tuning for scan ordering. Vertical movement is weighted by this factor relative to horizontal. Pass-through to `set_dft_config -vertical_weight`.| 1.0|
-| <a name="DFT_BLOCKAGE_WEIGHT"></a>DFT_BLOCKAGE_WEIGHT| Blockage-aware scan ordering penalty weight. Adds an estimated detour cost when a straight rectilinear scan connection would cross hard macros / placement blockages. Pass-through to `set_dft_config -blockage_weight`.| 1.0|
 | <a name="DFT_WRITE_SCANDEF"></a>DFT_WRITE_SCANDEF| Export a SCANDEF/DEF-style `SCANCHAINS` section to a standalone file in the final stage (calls `write_scandef -file ...` in OpenROAD).| 0|
 | <a name="DIE_AREA"></a>DIE_AREA| The die area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
 | <a name="DONT_BUFFER_PORTS"></a>DONT_BUFFER_PORTS| Do not buffer input/output ports during floorplanning.| 0|
@@ -213,8 +218,10 @@ configuration file.
 | <a name="IO_PLACER_H"></a>IO_PLACER_H| A list of metal layers on which the I/O pins are placed horizontally (top and bottom of the die).| |
 | <a name="IO_PLACER_V"></a>IO_PLACER_V| A list of metal layers on which the I/O pins are placed vertically (sides of the die).| |
 | <a name="IR_DROP_LAYER"></a>IR_DROP_LAYER| Default metal layer to report IR drop.| |
+| <a name="KEEP_VARS"></a>KEEP_VARS| Feature toggle to keep intermediate variables during the flow. This is useful for the single-run flow, where all stages of the flow are run in a single OpenROAD instance.| 0|
 | <a name="KLAYOUT_TECH_FILE"></a>KLAYOUT_TECH_FILE| A mapping from LEF/DEF to GDS using the KLayout tool.| |
-| <a name="LATCH_MAP_FILE"></a>LATCH_MAP_FILE| List of latches treated as a black box by Yosys.| |
+| <a name="LATCH_MAP_FILE"></a>LATCH_MAP_FILE| Optional mapping file supplied to Yosys to map latches| |
+| <a name="LAYER_PARASITICS_FILE"></a>LAYER_PARASITICS_FILE| Path to per layer parasitics file. Defaults to $(PLATFORM_DIR)/setRC.tcl.| |
 | <a name="LIB_FILES"></a>LIB_FILES| A Liberty file of the standard cell library with PVT characterization, input and output characteristics, timing and power definitions for each cell.| |
 | <a name="MACRO_BLOCKAGE_HALO"></a>MACRO_BLOCKAGE_HALO| Distance beyond the edges of a macro that will also be covered by the blockage generated for that macro. Note that the default macro blockage halo comes from the largest of the specified MACRO_PLACE_HALO x or y values. This variable overrides that calculation.| |
 | <a name="MACRO_EXTENSION"></a>MACRO_EXTENSION| Sets the number of GCells added to the blockages boundaries from macros.| |
@@ -231,6 +238,7 @@ configuration file.
 | <a name="MAX_ROUTING_LAYER"></a>MAX_ROUTING_LAYER| The highest metal layer name to be used in routing.| |
 | <a name="MIN_BUF_CELL_AND_PORTS"></a>MIN_BUF_CELL_AND_PORTS| Used to insert a buffer cell to pass through wires. Used in synthesis.| |
 | <a name="MIN_ROUTING_LAYER"></a>MIN_ROUTING_LAYER| The lowest metal layer name to be used in routing.| |
+| <a name="NUM_CORES"></a>NUM_CORES| Passed to `openroad -threads $(NUM_CORES)`, defaults to numbers of cores in system as determined by system specific code in Makefile, `nproc` is tried first. OpenROAD does not limit itself to this number of cores across OpenROAD running instances, which can lead to overprovisioning in contexts such as bazel-orfs where there could be many routing, or place jobs running at the same time.| |
 | <a name="OPENROAD_HIERARCHICAL"></a>OPENROAD_HIERARCHICAL| Feature toggle to enable to run OpenROAD in hierarchical mode, otherwise considered flat. Will eventually be the default and this option will be retired.| 0|
 | <a name="PDN_TCL"></a>PDN_TCL| File path which has a set of power grid policies used by pdn to be applied to the design, such as layers to use, stripe width and spacing to generate the actual metal straps.| |
 | <a name="PLACE_DENSITY"></a>PLACE_DENSITY| The desired average placement density of cells: 1.0 = dense, 0.0 = widely spread. The intended effort is also communicated by this parameter. Use a low value for faster builds and higher value for better quality of results. If a too low value is used, the placer will not be able to place all cells and a recommended minimum placement density can be found in the logs. A too high value can lead to excessive runtimes, even timeouts and subtle failures in the flow after placement, such as in CTS or global routing when timing repair fails. The default is platform specific.| |
@@ -241,7 +249,7 @@ configuration file.
 | <a name="PLATFORM_TCL"></a>PLATFORM_TCL| Specifies a Tcl script with commands to run before loading design.| |
 | <a name="POST_CTS_TCL"></a>POST_CTS_TCL| Specifies a Tcl script with commands to run after CTS is completed.| |
 | <a name="POST_FLOORPLAN_TCL"></a>POST_FLOORPLAN_TCL| Specifies a Tcl script with commands to run after floorplan is completed (before writing `2_1_floorplan.odb`).| |
-| <a name="POST_GLOBAL_ROUTE_TCL"></a>POST_GLOBAL_ROUTE_TCL| Specifies a Tcl script with commands to run after the initial global route succeeds (before repair_design / repair_timing). Useful for trial-routing flows that need to modify the design, then incrementally route only the modified nets.| |
+| <a name="POST_GLOBAL_ROUTE_TCL"></a>POST_GLOBAL_ROUTE_TCL| Specifies a Tcl script with commands to run after the initial global route completes (before repair_design / repair_timing).| |
 | <a name="PRE_GLOBAL_ROUTE_TCL"></a>PRE_GLOBAL_ROUTE_TCL| Specifies a Tcl script with commands to run before global route.| |
 | <a name="PROCESS"></a>PROCESS| Technology node or process in use.| |
 | <a name="PWR_NETS_VOLTAGES"></a>PWR_NETS_VOLTAGES| Used for IR Drop calculation.| |
@@ -258,8 +266,8 @@ configuration file.
 | <a name="RTLMP_DEAD_SPACE"></a>RTLMP_DEAD_SPACE| Specifies the target dead space percentage, which influences the utilization of a cluster.| 0.05|
 | <a name="RTLMP_FENCE_LX"></a>RTLMP_FENCE_LX| Defines the lower left X coordinate for the global fence bounding box in microns.| 0.0|
 | <a name="RTLMP_FENCE_LY"></a>RTLMP_FENCE_LY| Defines the lower left Y coordinate for the global fence bounding box in microns.| 0.0|
-| <a name="RTLMP_FENCE_UX"></a>RTLMP_FENCE_UX| Defines the upper right X coordinate for the global fence bounding box in microns.| 100000000.0|
-| <a name="RTLMP_FENCE_UY"></a>RTLMP_FENCE_UY| Defines the upper right Y coordinate for the global fence bounding box in microns.| 100000000.0|
+| <a name="RTLMP_FENCE_UX"></a>RTLMP_FENCE_UX| Defines the upper right X coordinate for the global fence bounding box in microns.| 0.0|
+| <a name="RTLMP_FENCE_UY"></a>RTLMP_FENCE_UY| Defines the upper right Y coordinate for the global fence bounding box in microns.| 0.0|
 | <a name="RTLMP_MAX_INST"></a>RTLMP_MAX_INST| Maximum number of standard cells in a cluster. If unset, rtl_macro_placer will calculate a value based on the design attributes.| |
 | <a name="RTLMP_MAX_LEVEL"></a>RTLMP_MAX_LEVEL| Maximum depth of the physical hierarchy tree.| 2|
 | <a name="RTLMP_MAX_MACRO"></a>RTLMP_MAX_MACRO| Maximum number of macros in a cluster. If unset, rtl_macro_placer will calculate a value based on the design attributes.| |
@@ -325,7 +333,8 @@ configuration file.
 | <a name="VERILOG_DEFINES"></a>VERILOG_DEFINES| Preprocessor defines passed to the language frontend. Example: `-D HPDCACHE_ASSERT_OFF`| |
 | <a name="VERILOG_FILES"></a>VERILOG_FILES| The path to the design Verilog/SystemVerilog files providing a description of modules.| |
 | <a name="VERILOG_INCLUDE_DIRS"></a>VERILOG_INCLUDE_DIRS| Specifies the include directories for the Verilog input files.| |
-| <a name="VERILOG_TOP_PARAMS"></a>VERILOG_TOP_PARAMS| Apply toplevel params (if exist).| |
+| <a name="VERILOG_TOP_PARAMS"></a>VERILOG_TOP_PARAMS| Apply toplevel params (if exist). Passed in as a list of key value pairs in tcl syntax; separated by spaces: PARAM1 VALUE1 PARAM2 VALUE2| |
+| <a name="WRITE_ODB_AND_SDC_EACH_STAGE"></a>WRITE_ODB_AND_SDC_EACH_STAGE| Save out .sdc and .odb file after each stage, useful to disable when using a single OpenROAD instance to run all stages of the flow.| 1|
 | <a name="YOSYS_FLAGS"></a>YOSYS_FLAGS| Flags to pass to yosys.| -v 3|
 ## synth variables
 
@@ -335,6 +344,7 @@ configuration file.
 - [ABC_LOAD_IN_FF](#ABC_LOAD_IN_FF)
 - [ADDER_MAP_FILE](#ADDER_MAP_FILE)
 - [CLKGATE_MAP_FILE](#CLKGATE_MAP_FILE)
+- [DFF_MAP_FILE](#DFF_MAP_FILE)
 - [LATCH_MAP_FILE](#LATCH_MAP_FILE)
 - [MIN_BUF_CELL_AND_PORTS](#MIN_BUF_CELL_AND_PORTS)
 - [SDC_FILE](#SDC_FILE)
@@ -370,9 +380,12 @@ configuration file.
 - [CORE_ASPECT_RATIO](#CORE_ASPECT_RATIO)
 - [CORE_MARGIN](#CORE_MARGIN)
 - [CORE_UTILIZATION](#CORE_UTILIZATION)
+- [DFT_BLOCKAGE_WEIGHT](#DFT_BLOCKAGE_WEIGHT)
 - [DFT_CHAIN_COUNT](#DFT_CHAIN_COUNT)
 - [DFT_CLOCK_MIXING](#DFT_CLOCK_MIXING)
+- [DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS](#DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS)
 - [DFT_EXCLUDE_SHIFT_REGISTERS](#DFT_EXCLUDE_SHIFT_REGISTERS)
+- [DFT_IMPORT_SCANDEF_FILE](#DFT_IMPORT_SCANDEF_FILE)
 - [DFT_INSERT_LOCKUP](#DFT_INSERT_LOCKUP)
 - [DFT_LOCKUP_CELL_FALLING](#DFT_LOCKUP_CELL_FALLING)
 - [DFT_LOCKUP_CELL_RISING](#DFT_LOCKUP_CELL_RISING)
@@ -398,14 +411,15 @@ configuration file.
 - [DFT_SCAN_ORDER_SOLVER](#DFT_SCAN_ORDER_SOLVER)
 - [DFT_SCAN_OUT_NAME_PATTERN](#DFT_SCAN_OUT_NAME_PATTERN)
 - [DFT_SHIFT_REGISTER_MIN_LENGTH](#DFT_SHIFT_REGISTER_MIN_LENGTH)
+- [DFT_SPLIT_MULTIBIT_SCAN_CELLS](#DFT_SPLIT_MULTIBIT_SCAN_CELLS)
 - [DFT_TIMING_BUFFER_CELL](#DFT_TIMING_BUFFER_CELL)
 - [DFT_TIMING_BUFFER_IN_PIN](#DFT_TIMING_BUFFER_IN_PIN)
 - [DFT_TIMING_BUFFER_OUT_PIN](#DFT_TIMING_BUFFER_OUT_PIN)
 - [DFT_TIMING_CRITICAL_SLACK](#DFT_TIMING_CRITICAL_SLACK)
 - [DFT_TIMING_HOLD_WEIGHT](#DFT_TIMING_HOLD_WEIGHT)
 - [DFT_TIMING_SETUP_WEIGHT](#DFT_TIMING_SETUP_WEIGHT)
+- [DFT_USE_EXISTING_SCAN_CHAINS](#DFT_USE_EXISTING_SCAN_CHAINS)
 - [DFT_VERTICAL_WEIGHT](#DFT_VERTICAL_WEIGHT)
-- [DFT_BLOCKAGE_WEIGHT](#DFT_BLOCKAGE_WEIGHT)
 - [DIE_AREA](#DIE_AREA)
 - [FLOORPLAN_DEF](#FLOORPLAN_DEF)
 - [FOOTPRINT](#FOOTPRINT)
@@ -524,12 +538,15 @@ configuration file.
 
 - [CELL_PAD_IN_SITES_DETAIL_PLACEMENT](#CELL_PAD_IN_SITES_DETAIL_PLACEMENT)
 - [DETAILED_METRICS](#DETAILED_METRICS)
+- [DFT_BLOCKAGE_WEIGHT](#DFT_BLOCKAGE_WEIGHT)
 - [DFT_BUFFER_SCAN_ENABLE](#DFT_BUFFER_SCAN_ENABLE)
 - [DFT_CHAIN_COUNT](#DFT_CHAIN_COUNT)
 - [DFT_CLOCK_MIXING](#DFT_CLOCK_MIXING)
 - [DFT_DEFER_STITCH](#DFT_DEFER_STITCH)
 - [DFT_DONT_TOUCH_SCAN_NETS](#DFT_DONT_TOUCH_SCAN_NETS)
+- [DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS](#DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS)
 - [DFT_EXCLUDE_SHIFT_REGISTERS](#DFT_EXCLUDE_SHIFT_REGISTERS)
+- [DFT_IMPORT_SCANDEF_FILE](#DFT_IMPORT_SCANDEF_FILE)
 - [DFT_INSERT_LOCKUP](#DFT_INSERT_LOCKUP)
 - [DFT_LOCKUP_CELL_FALLING](#DFT_LOCKUP_CELL_FALLING)
 - [DFT_LOCKUP_CELL_RISING](#DFT_LOCKUP_CELL_RISING)
@@ -569,14 +586,15 @@ configuration file.
 - [DFT_SCAN_SOLVER_MAX_2OPT_ITERS](#DFT_SCAN_SOLVER_MAX_2OPT_ITERS)
 - [DFT_SCAN_SOLVER_SEED](#DFT_SCAN_SOLVER_SEED)
 - [DFT_SHIFT_REGISTER_MIN_LENGTH](#DFT_SHIFT_REGISTER_MIN_LENGTH)
+- [DFT_SPLIT_MULTIBIT_SCAN_CELLS](#DFT_SPLIT_MULTIBIT_SCAN_CELLS)
 - [DFT_TIMING_BUFFER_CELL](#DFT_TIMING_BUFFER_CELL)
 - [DFT_TIMING_BUFFER_IN_PIN](#DFT_TIMING_BUFFER_IN_PIN)
 - [DFT_TIMING_BUFFER_OUT_PIN](#DFT_TIMING_BUFFER_OUT_PIN)
 - [DFT_TIMING_CRITICAL_SLACK](#DFT_TIMING_CRITICAL_SLACK)
 - [DFT_TIMING_HOLD_WEIGHT](#DFT_TIMING_HOLD_WEIGHT)
 - [DFT_TIMING_SETUP_WEIGHT](#DFT_TIMING_SETUP_WEIGHT)
+- [DFT_USE_EXISTING_SCAN_CHAINS](#DFT_USE_EXISTING_SCAN_CHAINS)
 - [DFT_VERTICAL_WEIGHT](#DFT_VERTICAL_WEIGHT)
-- [DFT_BLOCKAGE_WEIGHT](#DFT_BLOCKAGE_WEIGHT)
 - [GLOBAL_ROUTE_ARGS](#GLOBAL_ROUTE_ARGS)
 - [HOLD_SLACK_MARGIN](#HOLD_SLACK_MARGIN)
 - [IO_PLACER_H](#IO_PLACER_H)
@@ -638,9 +656,12 @@ configuration file.
 
 - [DFT_ENABLE](#DFT_ENABLE)
 - [DFT_ROUTE_AWARE](#DFT_ROUTE_AWARE)
+- [KEEP_VARS](#KEEP_VARS)
+- [NUM_CORES](#NUM_CORES)
 - [OPENROAD_HIERARCHICAL](#OPENROAD_HIERARCHICAL)
 - [SWAP_ARITH_OPERATORS](#SWAP_ARITH_OPERATORS)
 - [SYNTH_WRAPPED_OPERATORS](#SYNTH_WRAPPED_OPERATORS)
+- [WRITE_ODB_AND_SDC_EACH_STAGE](#WRITE_ODB_AND_SDC_EACH_STAGE)
 
 ## generate_abstract variables
 
@@ -674,6 +695,7 @@ configuration file.
 - [GUI_TIMING](#GUI_TIMING)
 - [IR_DROP_LAYER](#IR_DROP_LAYER)
 - [KLAYOUT_TECH_FILE](#KLAYOUT_TECH_FILE)
+- [LAYER_PARASITICS_FILE](#LAYER_PARASITICS_FILE)
 - [LIB_FILES](#LIB_FILES)
 - [MACRO_EXTENSION](#MACRO_EXTENSION)
 - [PLATFORM](#PLATFORM)

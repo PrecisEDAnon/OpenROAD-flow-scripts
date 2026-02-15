@@ -30,9 +30,9 @@ Toggle variants (kept for comparison):
     - `PIN_TO_NET`: routing-aware pin-to-net distance to scan-out net guides/routes, plus a placement tie-break, the same long-edge penalty, and the same blockage detour penalty.
   - Solvers:
     - `HEURISTIC`: greedy NN + farthest insertion + bounded 2-opt (rtree fallback for huge chains).
-    - `SCANOPT`: in-tree ScanOpt-style iterated local search (double-bridge kicks + descent over an O(n²) cost matrix).
-    - `UCLA_SCANOPT`: UCLA ScanOptpack reference solver (vendored), but only works for `PLACEMENT` with fixed begin/end and no constraints (else falls back to `SCANOPT`).
-- For A/B comparisons, fix `DFT_SCANOPT_SEED` and increase `DFT_SCANOPT_TIME_LIMIT` to reduce run-to-run variance from tight time budgets.
+    - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD uses UCLA as a preference while still enforcing constraints.
+    - `ILS`: OpenROAD in-tree iterated local search solver (used automatically for `PIN_TO_NET` ordering).
+- For A/B comparisons (especially with `ILS`), fix `DFT_SCANOPT_SEED` and increase `DFT_SCANOPT_TIME_LIMIT` to reduce run-to-run variance from tight time budgets.
 - ORFS scan-chain tooling uses pin-level asymmetric costs (scan-out → scan-in) via `report_dft_plan_pins -verbose`.
 - Scan enable fanout control is handled in OpenROAD as `buffer_scan_enable`; ORFS calls it by default via `DFT_BUFFER_SCAN_ENABLE=1` (falls back to legacy `insert_buffer` if the command is unavailable).
 - `polarity_mode=strict` is the default (so mixed-edge flops are split across chains unless explicitly overridden).
@@ -54,6 +54,7 @@ Fix (final approach):
   - enable: `SE`, `SCE`, `SCAN_EN`, `SCAN_ENABLE`, `SCANENABLE`
   - in: `SI`, `SCD`, `SCAN_IN`, `SCANIN`
   - out: `SO`, `SCO`, `SCAN_OUT`, `SCANOUT`
+- Also matches common indexed/bus forms like `SI0`, `SI_0`, `SI[0]` (and similarly for `SO*`/`SE*`) so multi-scan-port cells can be recognized without Liberty `signal_type` tagging.
 - This allows DFT to identify scan pins without requiring any `tools/OpenROAD/src/sta` changes.
 
 ### 2) Fix scan stitching correctness
@@ -76,7 +77,7 @@ Changes in the earlier “with-opensta” variant that were retained/improved:
 
 ### 4) Add/enable regression coverage
 
-- Added DFT regressions covering scan-chain planning/stitching plus key v1.0 knobs (`exclude_shift_registers`, `prefer_qbar`, `write_scandef`).
+- Added DFT regressions covering scan-chain planning/stitching plus key v1.0 knobs (`exclude_shift_registers`, `prefer_qbar`, `write_scandef`, `split_multibit_scan_cells`).
 - Verified DFT tests pass in the fixed OpenROAD build (`ctest -R '^dft\.'`).
 
 ### 5) Add a scan ordering constraints file (naming, endpoints, grouping, ordering)
@@ -117,7 +118,7 @@ Observed issue: visually obvious long-hop edges (“jumps”), especially with m
 Fixes:
 - Include Begin/EndPort terms in the ordering objective when endpoints have locations (reduces IO “stem” artifacts).
 - Partitioning guardrails: after K-means clustering, also try X/Y axis sweeps and a Hilbert space-filling sweep, then pick the assignment with the smallest worst within-chain Manhattan diameter (tie-break by worst X/Y gap) to avoid geographically discontiguous chain membership that local ordering can’t fix.
-- `SCANOPT` QoR focus: stronger long-edge penalty and worst-edge local moves (worst-edge 2-opt, worst-edge segment relocate, and a direction-preserving 3-opt “segment swap” inspired by UCLApack’s `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411/ScanOpt/scanTourDZ.cxx`), plus a bounds fix to avoid crashes on open paths.
+- `ILS` QoR focus: stronger long-edge penalty and worst-edge local moves (worst-edge 2-opt, worst-edge segment relocate, and a direction-preserving 3-opt “segment swap” inspired by UCLApack’s `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411/ScanOpt/scanTourDZ.cxx`), plus a bounds fix to avoid crashes on open paths.
 - ORFS scan port placement: when re-placing `scan_in_N`/`scan_out_N` near endpoints, try all 4 die edges (in distance order) so dense IO regions don’t force large shifts along the boundary.
 
 ### 7) Special cells + power domains (warn-only)
@@ -127,6 +128,7 @@ Per the v1.0 “mandatory” notes (“initially warn”), OpenROAD DFT now reco
 - Clock gate cells on scan clocks / scan-enable pins (to ensure scan clocks run during scan).
 - Internal tri-state drivers (which may need explicit disable/constraints during scan).
 - Scan-chain edges that cross different OpenDB `dbPowerDomain`s (voltage/switching mismatches).
+  - To make these crossings fatal, set `set_dft_config -error_on_power_domain_crossings 1`.
 
 ### 8) Shift-register recognition (optional exclusion)
 
@@ -145,6 +147,7 @@ Per the v1.0 “mandatory” notes (“exporting chains for ATPG”), OpenROAD D
 
 Note:
 - `write_scandef` relies on scan chain objects stored in OpenDB by `execute_dft_plan`. When ORFS uses a non-OpenROAD stitch solver (manual net connections), it writes + imports a temporary SCANDEF (`read_def -incremental`) to populate those OpenDB objects so export still works.
+- To *import* a user-defined scan path (DEF/SCANDEF `SCANCHAINS`) and stitch in that exact order, use `read_def -incremental <scandef>` + `set_dft_config -use_existing_scan_chains 1` before `execute_dft_plan`.
 
 ## ORFS Integration (How DFT Is Hooked Into the Flow)
 
@@ -155,7 +158,8 @@ Two ORFS hook scripts were added:
   - Runs:
     - `set_dft_config` (defaults to 1 chain; configurable via env vars below)
     - `scan_replace`
-    - infers planned chain count from `report_dft_plan` and creates ports:
+    - optional: import a SCANDEF/DEF `SCANCHAINS` section via `DFT_IMPORT_SCANDEF_FILE`
+    - infers planned chain count from `report_dft_plan` and creates ports (skipped when `DFT_USE_EXISTING_SCAN_CHAINS=1`):
       - `scan_enable_0` (shared enable)
       - `scan_in_<N>`, `scan_out_<N>` for each planned chain
     - `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode assumption)
@@ -251,7 +255,7 @@ Per-chain ordering (TSP-path heuristic):
   - `OptimizeScanWirelength()`:
     - start node: lower-leftmost cell (min `x+y`, tie-break by instance name) unless BeginPort is provided
     - `HEURISTIC`: greedy NN + farthest insertion + bounded 2-opt (rtree fallback for huge chains)
-    - `SCANOPT`: iterated local search (double-bridge kicks + descent) over a full O(n²) cost matrix, including a superlinear long-edge penalty and worst-edge cleanup moves (worst-edge 2-opt, worst-edge segment relocate, direction-preserving 3-opt “segment swap”)
+    - `ILS`: iterated local search (double-bridge kicks + descent) over a full O(n²) cost matrix, including a superlinear long-edge penalty and worst-edge cleanup moves (worst-edge 2-opt, worst-edge segment relocate, direction-preserving 3-opt “segment swap”)
 
 Physical stitching (netlist update):
 - `tools/OpenROAD/src/dft/src/stitch/ScanStitch.cpp`
@@ -269,9 +273,9 @@ Location proxy + scan net sigtype:
 
 - OpenROAD supports three ordering solvers via `set_dft_config -scan_order_solver`:
   - `HEURISTIC`: NN + farthest-insertion + bounded 2-opt (rtree fallback for huge chains)
-  - `SCANOPT`: iterated local search (double-bridge kicks + relocate/swap/2-opt) with a superlinear long-edge penalty to suppress “jumps”
-  - `UCLA_SCANOPT`: UCLA ScanOptpack reference solver (vendored), but only supports unconstrained `PLACEMENT` ordering with fixed begin/end
-- `DFT_SCANOPT_TIME_LIMIT` is treated as a total budget and is split across chains to avoid runtime scaling with chain count.
+  - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD uses UCLA as a preference while still enforcing constraints.
+  - `ILS`: iterated local search (double-bridge kicks + relocate/swap/2-opt) with a superlinear long-edge penalty to suppress “jumps”
+- `DFT_SCANOPT_TIME_LIMIT` is treated as a total budget for `ILS` and is split across chains to avoid runtime scaling with chain count.
 - ORFS can benchmark external scan ordering solvers (e.g., OR-Tools/LKH) via `DFT_SCAN_SOLVER=scanopt_next` + `DFT_SCAN_SOLVER_BIN` (TSV in → order out). The bundled `scanopt_next` is a lightweight NumPy-only reference, not OR-Tools.
 - ORFS exposes `DFT_CHAIN_COUNT` / `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS mitigates this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (auto-enabled for multi-chain; override with `DFT_PLACE_SCAN_PORTS=0`).
 - Some prebuilt `*.odb` files cannot be loaded due to OpenDB schema mismatches (e.g. “schema 0.124 > 0.122”). Use schema-compatible ODBs, or rebuild OpenROAD to match.

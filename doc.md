@@ -43,14 +43,18 @@ Key knobs (ORFS-clean-DFT):
 - `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH`: max bits per chain (also used to infer chain count when `DFT_CHAIN_COUNT` is not set)
 - `DFT_MAX_IMBALANCE`: max chain-length imbalance percent (default `2`)
 - `DFT_SCAN_ORDER_CONSTRAINTS_FILE`: chain naming + begin/end + grouping/ordering/exclusion constraints (see `tools/OpenROAD/src/dft/README.md`)
+- `DFT_USE_EXISTING_SCAN_CHAINS`: reuse scan chains already stored in ODB (e.g., imported SCANDEF) for `execute_dft_plan`
+- `DFT_IMPORT_SCANDEF_FILE`: SCANDEF/DEF file path to import via `read_def -incremental` (used with `DFT_USE_EXISTING_SCAN_CHAINS=1`)
+- `DFT_SPLIT_MULTIBIT_SCAN_CELLS`: split multi-scan-port scan cells into per-port scan elements
+- `DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS`: fail (instead of warn) on scan edges crossing voltage/switchable power domains
 - `DFT_EXCLUDE_SHIFT_REGISTERS`: auto-exclude simple functional shift registers (direct Q→D chains)
   - `DFT_SHIFT_REGISTER_MIN_LENGTH` (default `4`)
 - `DFT_PREFER_QBAR`: prefer using `QN`/`Q_N` as scan-out when scan-out ports aren’t tagged (can reduce load on functional `Q` nets; introduces scan-path inversion)
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
 - `DFT_SCAN_ORDER_METRIC`: `PIN_TO_NET` (routing-aware) or `PLACEMENT`
-- `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; QoR-focused) / `HEURISTIC` / `UCLA_SCANOPT` (reference; placement-only, needs fixed begin/end)
-- `DFT_SCANOPT_TIME_LIMIT`: total time budget (seconds) split across chains (default `15`)
-- `DFT_SCANOPT_ROUNDS`: SCANOPT iteration budget (default `500000`)
+- `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; UCLA ScanOptpack; `PLACEMENT` only; begin/end inferred if not provided) / `ILS` (OpenROAD in-tree local search) / `HEURISTIC`
+- `DFT_SCANOPT_TIME_LIMIT`: total time budget (seconds) split across chains for `ILS` (default `300`)
+- `DFT_SCANOPT_ROUNDS`: iteration budget for `SCANOPT`/`ILS` (default `500000`)
 - `DFT_BLOCKAGE_WEIGHT`: blockage-aware detour penalty (default `1.0`, `0` disables)
 - `DFT_DONT_TOUCH_SCAN_NETS`: marks most SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn (scan_enable tree is kept optimizable)
 - `DFT_BUFFER_SCAN_ENABLE`: buffers/splits `scan_enable_0` to control fanout and avoid GRT freezes (default `1`)
@@ -64,7 +68,7 @@ Key knobs (ORFS-clean-DFT):
 
 Algorithm sketch:
 - Clustering/partitioning across chains: K-means + reassignment (“swap/move”) under a per-chain max-length cap; also tries X/Y axis sweeps and a Hilbert space-filling sweep, then picks the assignment with the smallest worst within-chain Manhattan diameter (tie-break by worst X/Y gap) to suppress multi-chain outliers (“big jumps”).
-- Intra-chain ordering: `SCANOPT` (iterated local search with a superlinear long-edge penalty + worst-edge cleanup moves, including direction-preserving 3-opt segment swap); `HEURISTIC` is NN + insertion + bounded 2‑opt.
+- Intra-chain ordering: `SCANOPT` (UCLA ScanOptpack; `PLACEMENT` only) or `ILS` (iterated local search with a superlinear long-edge penalty + worst-edge cleanup moves, including direction-preserving 3-opt segment swap); `HEURISTIC` is NN + insertion + bounded 2‑opt.
 
 Status (2026-02-15):
 - Clean branches are pushed and reproducible:

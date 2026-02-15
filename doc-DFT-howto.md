@@ -22,7 +22,7 @@ This auto-wires the two ORFS DFT hook scripts:
   - sets `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode timing)
 - `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl`
   - runs `execute_dft_plan` (stitches the scan chain using placement)
-  - defaults to `DFT_SCAN_ORDER_SOLVER=SCANOPT` with `DFT_SCANOPT_ROUNDS=500000` and `DFT_SCANOPT_TIME_LIMIT=15` (total budget across all chains)
+  - defaults to `DFT_SCAN_ORDER_SOLVER=SCANOPT` (UCLA ScanOptpack) with `DFT_SCANOPT_ROUNDS=500000` (mapped to UCLA major loops). `DFT_SCANOPT_TIME_LIMIT` applies to `DFT_SCAN_ORDER_SOLVER=ILS` (and to `SCANOPT` when it falls back to `ILS` for `PIN_TO_NET`).
 
 Note:
 - If you set `DFT_CLOCK_MIXING=clock_mix`, mixed-clock/edge chains require lockup insertion during stitching. ORFS defaults `DFT_LOCKUP_POLICY=auto`, which will automatically re-run with `DFT_CLOCK_MIXING=no_mix` when mixed domains are detected (so `clock_mix` becomes a no-op unless you change the policy).
@@ -35,16 +35,16 @@ If you want scan ordering to use trial global-route guides (paper-style “routi
 
 - `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_route_aware DFT_ENABLE=1 DFT_ROUTE_AWARE=1 finish`
 
-## Optional: OpenROAD ScanOpt ordering (internal, iterated local search)
+## Optional: OpenROAD ILS ordering (internal, iterated local search)
 
-ORFS defaults to OpenROAD’s built-in ScanOpt-style iterated local search (higher quality than the greedy heuristic). To explicitly set it:
+To use OpenROAD’s in-tree iterated local search solver (better QoR than the greedy heuristic, and supports `PIN_TO_NET`), set:
 
-- `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_or_scanopt DFT_ENABLE=1 DFT_SCAN_ORDER_SOLVER=SCANOPT finish`
+- `make -C flow DESIGN_CONFIG=./designs/nangate45/ibex/config.mk FLOW_VARIANT=with_dft_or_scanopt DFT_ENABLE=1 DFT_SCAN_ORDER_SOLVER=ILS finish`
 
 Tuning knobs:
 - `DFT_SCANOPT_ROUNDS` (default `500000`)
 - `DFT_SCANOPT_SEED` (default `1`)
-- `DFT_SCANOPT_TIME_LIMIT` (seconds; default `15`, `0` = unlimited)
+- `DFT_SCANOPT_TIME_LIMIT` (seconds; default `300`, `0` = unlimited)
   - Note: this is a total budget; OpenROAD splits it across chains.
   - For “heavier than default” runs, try `DFT_SCANOPT_TIME_LIMIT=600` (10 minutes) or higher.
 
@@ -120,12 +120,35 @@ To force an exact scan ordering per chain (user-defined scan path), provide an o
 
 File format: `chain_name inst0 inst1 inst2 ...` (one chain per line). For single-chain designs, a single line `inst0 inst1 ...` is also accepted.
 
+## Optional: Import SCANDEF and stitch (user-defined scan path)
+
+If you already have a SCANDEF/DEF `SCANCHAINS` section describing the exact per-chain ordering you want, you can import and stitch it:
+
+- ORFS flow (hook scripts):
+  - `make -C flow ... DFT_ENABLE=1 DFT_USE_EXISTING_SCAN_CHAINS=1 DFT_IMPORT_SCANDEF_FILE=/path/to/your.scandef finish`
+- `scan_replace`
+- `read_def -incremental /path/to/your.scandef`
+- `set_dft_config -use_existing_scan_chains 1`
+- `execute_dft_plan`
+
 ## Optional: Export SCANDEF (ATPG)
 
 To export a standalone DEF-style `SCANCHAINS` section for ATPG/external tooling:
 
 - `DFT_WRITE_SCANDEF=1` (writes to `$RESULTS_DIR/6_final.scandef`)
 - `DFT_SCANDEF_FILE=/path/to/output.scandef` (optional override)
+
+## Optional: Split multi-scan-port scan cells (MBFF-like)
+
+If your scan library contains cells with multiple external scan-in/out pairs (e.g., `SI0/SO0` and `SI1/SO1`) and you want ordering/stitching to treat them as separate scan elements, enable:
+
+- `DFT_SPLIT_MULTIBIT_SCAN_CELLS=1`
+
+## Optional: Fail on power-domain crossings
+
+By default, scan edges that cross voltage/switchable power domains are warned about (no automatic level shifter/isolation insertion). To make these crossings fatal:
+
+- `DFT_ERROR_ON_POWER_DOMAIN_CROSSINGS=1`
 
 ## Sanity Checks
 

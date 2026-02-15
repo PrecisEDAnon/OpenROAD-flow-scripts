@@ -238,3 +238,17 @@ proc find_physical_only_masters { } {
   }
   return $physical_only_masters
 }
+
+proc orfs_write_db { output_file } {
+  if { [info exists ::env(WRITE_ODB_AND_SDC_EACH_STAGE)] && !$::env(WRITE_ODB_AND_SDC_EACH_STAGE) } {
+    return
+  }
+  log_cmd write_db $output_file
+}
+
+proc orfs_write_sdc { output_file } {
+  if { [info exists ::env(WRITE_ODB_AND_SDC_EACH_STAGE)] && !$::env(WRITE_ODB_AND_SDC_EACH_STAGE) } {
+    return
+  }
+  log_cmd write_sdc -no_timestamp $output_file
+}
