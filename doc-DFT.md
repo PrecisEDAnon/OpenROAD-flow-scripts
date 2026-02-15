@@ -2,19 +2,16 @@
 
 This is a living worklog for DFT scan insertion + scan-chain stitching/optimization in ORFS. For historical comparisons, **OpenROAD `7bc521f36a` is treated as the “baseline DFT”** (often yields 0 chains due to scan-pin recognition failures). All work here assumes a **vanilla OpenSTA** requirement (no `src/sta` parser changes required).
 
-## Workspace snapshot (2026-02-12)
+## Workspace snapshot (2026-02-15)
 
-Reproducible “clean DFT” baselines (PrecisEDAnon GitHub):
-- OpenROAD: `OpenROAD-clean-DFT` @ `b64941f4c9` (scan_enable buffering + strict polarity default)
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `b64941f4c9`)
+Active (no-toggle) branches (PrecisEDAnon GitHub):
+- OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29`
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`; DFT snapshot `17759df95`)
 - OpenSTA: `d7cb9be1` (vanilla)
 
-Active dev branches (PrecisEDAnon GitHub):
-- OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `9b94d649ad`
-- ORFS: `ORFS-toggle-rebased-DFT`
-
-Local note:
-- This repo’s working tree may be dirty; for reproducible DFT behavior (especially `buffer_scan_enable`), prefer the clean baselines above.
+Toggle variants (kept for comparison):
+- OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
+- ORFS: `ORFS-toggle-rebased-DFT` (DFT snapshot `d4d8e830d`)
 
 ## Goal / Scope
 
@@ -22,20 +19,20 @@ Local note:
   - `scan_replace` converts functional flops → scan flops.
   - `execute_dft_plan` stitches scan chains using placement (wirelength-aware).
 - Ensure it works with **vanilla OpenSTA** (no OpenSTA parser patches required).
-- Align with the v1.0 requirements + review notes captured in `spec-random-comments.md`.
+- Align with the v1.0 requirements captured in `dft-spec.md`.
 - Provide a practical way to compare:
   - **7bc521 “baseline DFT”** (broken / mostly no-op) vs
   - **fixed DFT** (actually produces scan flops + stitched chains),
   - using QoR proxies and a scan-chain “TSP-like” cost metric.
 
-## Status (as of 2026-02-12)
+## Status (as of 2026-02-15)
 
 - ORFS hooks support `DFT_ENABLE=1` end-to-end: `scan_replace`, scan port creation, optional scan port placement, chain stitching, and reporting.
 - OpenROAD scan ordering:
   - `PLACEMENT` metric uses consistent pin-to-pin Manhattan distance (scan-out pin → next scan-in pin).
-  - `SCANOPT` solver integrates UCLA ScanOptpack (`UCLApack-3-010411`), and the repo-root UCLApack sources match OpenROAD’s vendored copy used by DFT.
+  - `SCANOPT` solver integrates UCLA ScanOptpack (vendored under `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411`).
 - For A/B comparisons, fix `DFT_SCANOPT_SEED` and increase `DFT_SCANOPT_TIME_LIMIT` to reduce run-to-run variance from tight time budgets.
-- ORFS scan-chain tooling (cost + plotting + bundled external solver I/O) uses pin-level asymmetric costs (scan-out → scan-in) and includes Begin/End terms when endpoints are known.
+- ORFS scan-chain tooling uses pin-level asymmetric costs (scan-out → scan-in) via `report_dft_plan_pins -verbose`.
 - Scan enable fanout control is handled in OpenROAD as `buffer_scan_enable`; ORFS calls it by default via `DFT_BUFFER_SCAN_ENABLE=1` (falls back to legacy `insert_buffer` if the command is unavailable).
 - `polarity_mode=strict` is the default (so mixed-edge flops are split across chains unless explicitly overridden).
 - ORFS `final_report.tcl` no longer hard-requires `orfs_write_db` (falls back to `write_db`), avoiding fork regressions.
@@ -43,7 +40,7 @@ Local note:
 - Verification smoke tests completed:
   - ORFS `nangate45/gcd` runs end-to-end through `finish` with `DFT_ENABLE=1` on `ORFS-clean-DFT`.
   - “DFT-only” planning on a pre-done `sky130hd/jpeg` placement validates with 0 broken links (including a multi-chain run).
-  - `dft-verifier/DFTRepro` outputs were backed up and regenerated cleanly; prior invalid pin placement issues were traced to harness pin/endpoints setup and fixed.
+  - Optional local harnesses (if used) live under `untracked/` (not tracked).
 
 ## Verification (quick sanity)
 
@@ -97,20 +94,15 @@ python3 flow/util/scan_chain_validate.py \
   --scan-replace --execute-dft-plan --ensure-ports --auto-chains
 ```
 
-### 3) `dft-verifier/DFTRepro` harness (packaged DB)
+### 3) Local DFTRepro harness (optional; untracked)
 
 Location:
-- `dft-verifier/DFTRepro/` (OpenROAD Python-based harness atop a packaged `db/`).
-- Note: in this ORFS checkout, `dft-verifier/` may be a local/untracked workspace folder (not part of upstream ORFS).
-
-Backups:
-- Existing prior outputs (other OpenROAD variants) are preserved under `dft-verifier/DFTRepro/backups/`.
-- Most recent backup during this work: `dft-verifier/DFTRepro/backups/20260212_072356/`.
+- By convention, keep any local harness under `untracked/DFTRepro/` (not tracked in git).
 
 Regenerate using a specific OpenROAD build:
 
 ```bash
-cd dft-verifier/DFTRepro
+cd untracked/DFTRepro
 OPENROAD_EXE="$OPENROAD_EXE" ./run_all.sh
 ```
 
@@ -130,8 +122,8 @@ Notes:
 - Older variant (kept for history): `orfs-dft-scan-with-opensta`
   - `5d3e1e243c`
 
-- Clean DFT baseline (PrecisEDAnon): `OpenROAD-clean-DFT` @ `b64941f4c9`
-- Active dev baseline (PrecisEDAnon): `OpenROAD-toggle-rebased-DFT` @ `9b94d649ad`
+- Clean DFT (active; PrecisEDAnon): `OpenROAD-clean-DFT` @ `dd50bacf29`
+- Toggle variant (PrecisEDAnon): `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
 
 ### OpenSTA submodule (`tools/OpenROAD/src/sta`)
 
@@ -225,7 +217,7 @@ Observed issue: visually obvious long-hop edges (“jumps”), especially with m
 Fixes:
 - Include Begin/EndPort terms in the ordering objective when endpoints have locations (reduces IO “stem” artifacts).
 - Partitioning guardrails: after K-means clustering, also try X/Y axis sweeps and a Hilbert space-filling sweep, then pick the assignment with the smallest worst within-chain Manhattan diameter (tie-break by worst X/Y gap) to avoid geographically discontiguous chain membership that local ordering can’t fix.
-- `SCANOPT` QoR focus: stronger long-edge penalty and worst-edge local moves (worst-edge 2-opt, worst-edge segment relocate, and a direction-preserving 3-opt “segment swap” inspired by `ScanOptpack-010411.tar` → `UCLApack-3-010411/ScanOpt/scanTourDZ.cxx`), plus a bounds fix to avoid crashes on open paths.
+- `SCANOPT` QoR focus: stronger long-edge penalty and worst-edge local moves (worst-edge 2-opt, worst-edge segment relocate, and a direction-preserving 3-opt “segment swap” inspired by UCLApack’s `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411/ScanOpt/scanTourDZ.cxx`), plus a bounds fix to avoid crashes on open paths.
 - ORFS scan port placement: when re-placing `scan_in_N`/`scan_out_N` near endpoints, try all 4 die edges (in distance order) so dense IO regions don’t force large shifts along the boundary.
 
 ### 7) Special cells + power domains (warn-only)
@@ -347,7 +339,7 @@ Routing robustness:
 
 ### OpenROAD executables used
 
-- OpenROAD under test: `$(pwd)/tools/OpenROAD/build/bin/openroad` (build of the `tools/OpenROAD` submodule pinned by your ORFS checkout; use `ORFS-clean-DFT` for the clean baseline pinned to `b64941f4c9`)
+- OpenROAD under test: `$(pwd)/tools/OpenROAD/build/bin/openroad` (build of the `tools/OpenROAD` submodule pinned by your ORFS checkout; `ORFS-clean-DFT` pins it to `dd50bacf29`)
 - Baseline OpenROAD (historical): build OpenROAD at `7bc521f36a` (ideally in a separate clone/worktree/build dir) and point `OPENROAD_EXE` at that binary
   - Example build (separate build dir): `git -C tools/OpenROAD checkout 7bc521f36a && cmake -S tools/OpenROAD -B tools/OpenROAD/build_7bc521 && cmake --build tools/OpenROAD/build_7bc521 -j"$(nproc)"`
 
@@ -613,9 +605,8 @@ Example usage:
 Example:
 - `python3 flow/util/scan_chain_plot.py --auto-chains --verilog flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.v --def flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.def --out dft_scan.png`
 
-Alternative plotter (color per chain; dashed black I/O edges):
-- `python3 highlighter.py --def flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.def --verilog flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.v --max-chain-count 4 --output-plot new_highlighter/ibex/ibex_dft.png`
-- Flattened copies from bulk runs are in `highlighter_flattened/` (unique filenames to avoid overwrites).
+Pin-level plotter (OpenROAD Python / ODB-based; uses SI/SO pin locations):
+- `openroad -python -exit flow/util/scan_chain_plot_openroad.py --odb flow/results/nangate45/ibex/qor_scan_dft_20260104/6_final.odb --out dft_scan.png`
 
 Note on “dashed black” edges:
 - These are scan I/O “stems”: `scan_in_N` (DEF pin location) → first scan cell, and last scan cell → `scan_out_N`.
@@ -626,30 +617,30 @@ Note on “dashed black” edges:
 For a placed `*.odb` + `*.sdc` where scan flops already exist, `flow/util/dft_preplaced_regress.py` runs `execute_dft_plan`, validates stitching, emits plots, and prints a table of worst-edge metrics.
 
 Example (ibex, Nangate45):
-- `python3 flow/util/dft_preplaced_regress.py --openroad tools/OpenROAD/build/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/3_place.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/3_place.sdc --scan-order-metric PIN_TO_NET --scan-order-solver SCANOPT --scanopt-rounds 500000 --scanopt-time-limit 600 --chain-counts 4 --max-imbalances 30 --out-prefix dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/preplaced_ibex_p2n --out-json dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/summary.json`
+- `python3 flow/util/dft_preplaced_regress.py --openroad tools/OpenROAD/build/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/3_place.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/3_place.sdc --scan-order-metric PIN_TO_NET --scan-order-solver SCANOPT --scanopt-rounds 500000 --scanopt-time-limit 600 --chain-counts 4 --max-imbalances 30 --out-prefix untracked/dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/preplaced_ibex_p2n --out-json untracked/dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/summary.json`
 
 Regression results (2026-02-07 snapshot; OpenROAD `9d5965b56818` + local patches; `PIN_TO_NET` + `SCANOPT`; `scanopt_time_limit=600` total budget):
 
 | design | chains | max_imbalance | max_step (um) | p99_step (um) | run |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `ibex` | 4 | 30 | `18.57` | `10.64` | `dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/` |
-| `jpeg` | 4 | 30 | `28.89` | `15.52` | `dft_artifacts/preplaced_runs/sweepselect_smoke/jpeg/` |
-| `gcd` | 4 | 30 | `23.39` | `23.39` | `dft_artifacts/preplaced_runs/sweepselect_smoke/gcd/` |
+| `ibex` | 4 | 30 | `18.57` | `10.64` | `untracked/dft_artifacts/preplaced_runs/ibex_k4_sweepselect_t600/` |
+| `jpeg` | 4 | 30 | `28.89` | `15.52` | `untracked/dft_artifacts/preplaced_runs/sweepselect_smoke/jpeg/` |
+| `gcd` | 4 | 30 | `23.39` | `23.39` | `untracked/dft_artifacts/preplaced_runs/sweepselect_smoke/gcd/` |
 
-Sanity comparison (ibex, before multi-chain outlier suppression): `dft_artifacts/preplaced_runs/ibex_k4_600_pen4/` had `max_step_um=38.45`.
+Sanity comparison (ibex, before multi-chain outlier suppression): `untracked/dft_artifacts/preplaced_runs/ibex_k4_600_pen4/` had `max_step_um=38.45`.
 
 `ibex` stress-case (many chains): `k=22`, `max_imbalance=30`, `PIN_TO_NET` + `SCANOPT`, `scanopt_time_limit=15` total budget.
 
 Repro:
-- `python3 flow/util/dft_preplaced_regress.py --openroad tools/OpenROAD/build/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/4_1_cts.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/4_cts.sdc --scan-order-metric PIN_TO_NET --scan-order-solver SCANOPT --scanopt-time-limit 15 --chain-counts 22 --max-imbalances 30 --io-placer-h metal5 --io-placer-v metal6 --out-prefix dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/preplaced_ibex_p2n`
+- `python3 flow/util/dft_preplaced_regress.py --openroad tools/OpenROAD/build/bin/openroad --liberty flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib --odb flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/4_1_cts.odb --sdc flow/results/nangate45/ibex/qor_scan_dft_maxlen200_20260106/4_cts.sdc --scan-order-metric PIN_TO_NET --scan-order-solver SCANOPT --scanopt-time-limit 15 --chain-counts 22 --max-imbalances 30 --io-placer-h metal5 --io-placer-v metal6 --out-prefix untracked/dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/preplaced_ibex_p2n`
 
 Results:
 - Baseline partitioning (kmeans/sweep-gap selection): `max_step_um=80.55`, `p99_step_um=35.29`
 - With Hilbert sweep partition selection (worst-diameter objective): `max_step_um=42.06`, `p99_step_um=10.92`
 
 Plots (I/O stems removed):
-- baseline: `dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/ibex_k22_kmeans_noio.png`
-- hilbert: `dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/ibex_k22_hilbert_noio.png`
+- baseline: `untracked/dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/ibex_k22_kmeans_noio.png`
+- hilbert: `untracked/dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/ibex_k22_hilbert_noio.png`
 
 ## QoR + Scan Summary (Existing Runs)
 

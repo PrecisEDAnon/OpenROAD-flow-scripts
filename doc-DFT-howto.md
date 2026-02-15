@@ -27,7 +27,7 @@ This auto-wires the two ORFS DFT hook scripts:
 Note:
 - If your design contains mixed clock domains and/or negedge flops, ORFS defaults `DFT_LOCKUP_POLICY=auto` and may fall back to `DFT_CLOCK_MIXING=no_mix`, which can increase the number of scan chains/ports.
   - To keep `clock_mix`, set `DFT_LOCKUP_POLICY=off` and configure lockup insertion (at minimum: `DFT_LOCKUP_CELL_RISING` + `DFT_LOCKUP_CLOCK_PIN_RISING`, and likewise `*_FALLING` if negedge scan flops exist).
-- Polarity defaults to `DFT_POLARITY_MODE=mid` (mixed polarity allowed; falling-edge flops are stitched before rising-edge flops within each chain). To forbid mixing polarities within a chain, set `DFT_POLARITY_MODE=strict` (may require additional chains when both polarities exist).
+- Polarity defaults to `DFT_POLARITY_MODE=strict` (no mixed polarity within a chain). To allow mixed polarity, set `DFT_POLARITY_MODE=mid` (falling-edge flops are stitched before rising-edge flops within each chain).
 
 ## Optional: Routing-aware ordering (trial route, then stitch)
 
@@ -125,6 +125,7 @@ To export a standalone DEF-style `SCANCHAINS` section for ATPG/external tooling:
 
 - Report the plan (from OpenROAD, after `scan_replace`):
   - `report_dft_plan -verbose`
+  - `report_dft_plan_pins -verbose` (includes SI/SO pin coordinates)
 - Validate chain integrity from a finished netlist:
   - `python3 flow/util/scan_chain_validate.py --verilog flow/results/<platform>/<design>/<variant>/6_final.v`
   - For multi-chain designs (`scan_in_0/scan_out_0`, `scan_in_1/scan_out_1`, ...), use `--auto-chains`.
@@ -143,5 +144,7 @@ To export a standalone DEF-style `SCANCHAINS` section for ATPG/external tooling:
 To see the scan chain polyline between placed scan cells (and highlight the longest hops in red), generate a PNG (works in Codex CLI). By default it also draws dashed black edges from `scan_in_N/scan_out_N` port locations (DEF PINS) to the first/last scan cell. If multiple scan chains are detected, the plotter will default to showing all chains (combined) unless you explicitly select a single chain via `--scan-in/--scan-out`.
 
 - `python3 flow/util/scan_chain_plot.py --verilog flow/results/<platform>/<design>/<variant>/6_final.v --def flow/results/<platform>/<design>/<variant>/6_final.def --out flow/reports/<platform>/<design>/<variant>/dft_scan_chain.png`
+- Pin-level (SI/SO) plot directly from ODB:
+  - `openroad -python -exit flow/util/scan_chain_plot_openroad.py --odb flow/results/<platform>/<design>/<variant>/<stage>.odb --out flow/reports/<platform>/<design>/<variant>/dft_scan_chain_pins.png`
 
 To generate one plot per chain, use `--auto-chains --out <dir>`. To generate SVG instead, use a `.svg` output path (or pass `--format svg`).

@@ -8,23 +8,22 @@ repo. Keep it **high-signal** and link out to dedicated docs for deep dives.
 Docs:
 - `doc-DFT-howto.md`: quickstart (how to run ORFS with scan insertion)
 - `doc-DFT.md`: design/implementation notes (knobs, algorithm, QoR deltas, validation tools)
-- `spec-random-comments.md`: requirements + review notes we aligned against
+- `dft-spec.md`: v1.0 requirements we implemented against
 
-Artifacts (kept out of repo root via `.gitignore` where possible):
-- `dft_artifacts/`: preplaced regress outputs, summaries, temp Tcl, etc.
-- `new_highlighter/`: per-design PNGs from `highlighter.py`
-- `highlighter_flattened/`: flattened PNGs (unique filenames for bulk runs)
+Local scratch/artifacts:
+- Keep local-only outputs under `untracked/` (not tracked; ignored via `.git/info/exclude`)
+  - Examples: `untracked/dft_artifacts/`, `untracked/new_highlighter/`, `untracked/highlighter_flattened/`, `untracked/DFTRepro/`
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
-  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) (baseline)
-  - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) (active)
+  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `dd50bacf29` (active; no toggles)
+  - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) @ `caf412756f` (toggle variant)
 - OpenROAD-flow-scripts:
-  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (baseline)
-  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (active)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; DFT snapshot `17759df95`)
+  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (toggle variant; DFT snapshot `d4d8e830d`)
 
 Note:
-- `ORFS-clean-DFT` is meant as a baseline snapshot; the knob list below reflects the active `ORFS-toggle-rebased-DFT` branch.
+- We do active work on the `*-clean-DFT` branches. The `*-toggle-rebased-DFT` branches are kept for comparison.
 
 How to run (ORFS):
 - Recommended: `DFT_ENABLE=1` (auto-wires the ORFS DFT hook scripts)
@@ -33,12 +32,14 @@ How to run (ORFS):
   - `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl` (optional scan port placement + runs `execute_dft_plan`)
   - Optional routing-aware ordering: `DFT_ROUTE_AWARE=1` (wires `POST_GLOBAL_ROUTE_TCL=.../dft_scan_post_global_route.tcl` and defers stitching)
 
-Key knobs (ORFS-toggle-rebased-DFT):
+Key knobs (ORFS-clean-DFT):
 - `DFT_ENABLE`: turn on scan insertion/stitching hooks
 - `DFT_ROUTE_AWARE`: use trial-route guides for ordering (`PIN_TO_NET`)
 - `DFT_CLOCK_MIXING`: `no_mix` (default) or `clock_mix` (mixed-clock chains; requires lockup insertion)
+- `DFT_POLARITY_MODE`: `strict` (default) or `mid` (falling-edge before rising-edge within each chain)
 - `DFT_LOCKUP_POLICY`: `auto` (default) / `warn` / `error` / `off` for mixed-clock/edge handling
 - `DFT_CHAIN_COUNT`: fixed number of scan chains (exact)
+- `DFT_MAX_CHAINS`: max number of scan chains (cap)
 - `DFT_MAX_CHAIN_LENGTH`/`DFT_MAX_LENGTH`: max bits per chain (also used to infer chain count when `DFT_CHAIN_COUNT` is not set)
 - `DFT_MAX_IMBALANCE`: max chain-length imbalance percent (default `2`)
 - `DFT_SCAN_ORDER_CONSTRAINTS_FILE`: chain naming + begin/end + grouping/ordering/exclusion constraints (see `tools/OpenROAD/src/dft/README.md`)
@@ -70,17 +71,18 @@ QoR snapshot (example: `nangate45/ibex`):
 
 Validation:
 - Preplaced regress: `python3 flow/util/dft_preplaced_regress.py ...` (see `doc-DFT.md`)
-- Plots: `python3 highlighter.py --def ... --verilog ... --output-plot ...` (dashed black edges are scan I/O port→chain-endpoint “stems”, not intra-chain edges; use `flow/util/scan_chain_plot.py --no-io-edges` to hide them)
+- Plots:
+  - DEF+Verilog: `python3 flow/util/scan_chain_plot.py ...` (uses instance placements from DEF)
+  - Pin-level from ODB: `openroad -python -exit flow/util/scan_chain_plot_openroad.py --odb ... --out ...`
 
-Status (2026-02-12):
-- Clean baselines are pushed and reproducible:
-  - OpenROAD: `OpenROAD-clean-DFT` @ `b64941f4c9` (adds `buffer_scan_enable`, defaults `polarity_mode=strict`)
-  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `b64941f4c9`, guards `orfs_write_db`, prefers local `tools/OpenROAD/build/bin/openroad`)
-- `UCLApack-3-010411` (repo root) matches OpenROAD’s vendored copy under `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411` for the ScanOpt sources used by DFT.
-- ORFS end-to-end DFT smoke test passes: `nangate45/gcd` completes `finish` with `DFT_ENABLE=1` on `ORFS-clean-DFT`.
-- “DFT-only” sanity on a pre-done `sky130hd/jpeg` placement passes: `scan_replace + execute_dft_plan` validates with 0 broken links (including a 4-chain run).
-- `dft-verifier/DFTRepro`: backed up old outputs, fixed harness pin placement + endpoint constraints + scan_enable buffering; suite regenerates without the prior `GRT-0080 Invalid pin placement` failures.
-- Multi-chain “big jumps” remain reduced via Hilbert/axis sweep partition selection + SCANOPT worst-edge direction-preserving 3-opt (see `dft_artifacts/preplaced_runs/ibex_k22_hilbert_20260207/`).
+Status (2026-02-15):
+- Clean branches are pushed and reproducible:
+  - OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29` (pin-based distances + `report_dft_plan_pins`)
+  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`; DFT snapshot `17759df95`)
+- Toggle variants are kept for comparison:
+  - OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
+  - ORFS: `ORFS-toggle-rebased-DFT` (DFT snapshot `d4d8e830d`)
+- OpenROAD vendors UCLA ScanOptpack under `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411` (no repo-root copy required).
 
 ---
 

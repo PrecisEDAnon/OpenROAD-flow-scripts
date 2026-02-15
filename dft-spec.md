@@ -1,4 +1,15 @@
+# DFT v1.0 spec (`execute_dft_plan`)
 
+## Status (ORFS/OpenROAD clean DFT branches)
+
+As of 2026-02-15, the v1.0 “mandatory” items in this doc are implemented in:
+- OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29`
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`; DFT snapshot `17759df95`)
+
+Known gaps (explicitly called out as “Future extensions” below):
+- Multi-bit MBFF / multi-bit ScanFF support.
+- Power-domain crossings are warn-only (no automatic level shifter / isolation insertion).
+- No SCANDEF import; external “import” is via explicit ordering/constraints inputs.
 
 The command execute_dft_plan should create one or more stitched (i.e., ordered) scan chains, satisfying user-specified constraints.
 Each scan chain is a “directed Hamiltonian path” over ScanFF instances. The chain will connect from a legal starting scan-in port of a ScanFF (the first ScanFF in the chain), to a legal ending scan-out port of another ScanFF (the last ScanFF in the chain).
