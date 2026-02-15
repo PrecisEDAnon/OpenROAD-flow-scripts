@@ -438,14 +438,14 @@ This is the core of `execute_dft_plan` / `scan_opt`: given placed scan flops, pr
 
 Per scan chain, minimize a proxy cost (default `PLACEMENT` metric):
 
-- `cost = Σ ManhattanDist(SO[i], SI[i+1])`
+- `cost = Σ edge_cost(i, i+1)` where `edge_cost` is based on pin-to-pin Manhattan distance (`SO[i]` → `SI[i+1]`) with a superlinear “jump” penalty and optional timing weighting
 - plus endpoint terms when chain endpoints have locations:
   - `+ ManhattanDist(BeginPort, SI[first])`
   - `+ ManhattanDist(SO[last], EndPort)`
 
 Where:
 - `SI[k]` is the scan-in pin location of scan cell `k`, and `SO[k]` is the scan-out pin location.
-- Pin locations are taken from OpenDB pin geometry when available (`dbITerm::getAvgXY` / `dbBTerm::getFirstPinLocation`), falling back to the placed instance location.
+- Pin locations are taken from the pin bbox lower-left corner (`getBBox().xMin/yMin`) for both `dbITerm` and `dbBTerm`, falling back to the placed instance location when pin geometry is unavailable.
 
 ORFS emits this same placement-based proxy as a report + metrics after stitching:
 - `flow/reports/<platform>/<design>/<variant>/dft_scan_chain_cost_pregrt.rpt`
