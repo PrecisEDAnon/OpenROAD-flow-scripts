@@ -1,6 +1,6 @@
 # DFT / Scan — Quickstart (Before vs After)
 
-This is a short “how to run” guide. For implementation details, limitations, and scan-order benchmarks, see `doc-DFT.md`.
+This is a short “how to run” guide. For implementation details and limitations, see `doc-DFT.md`.
 
 ## Before (Baseline: no DFT)
 
@@ -25,8 +25,8 @@ This auto-wires the two ORFS DFT hook scripts:
   - defaults to `DFT_SCAN_ORDER_SOLVER=SCANOPT` with `DFT_SCANOPT_ROUNDS=500000` and `DFT_SCANOPT_TIME_LIMIT=15` (total budget across all chains)
 
 Note:
-- If your design contains mixed clock domains and/or negedge flops, ORFS defaults `DFT_LOCKUP_POLICY=auto` and may fall back to `DFT_CLOCK_MIXING=no_mix`, which can increase the number of scan chains/ports.
-  - To keep `clock_mix`, set `DFT_LOCKUP_POLICY=off` and configure lockup insertion (at minimum: `DFT_LOCKUP_CELL_RISING` + `DFT_LOCKUP_CLOCK_PIN_RISING`, and likewise `*_FALLING` if negedge scan flops exist).
+- If you set `DFT_CLOCK_MIXING=clock_mix`, mixed-clock/edge chains require lockup insertion during stitching. ORFS defaults `DFT_LOCKUP_POLICY=auto`, which will automatically re-run with `DFT_CLOCK_MIXING=no_mix` when mixed domains are detected (so `clock_mix` becomes a no-op unless you change the policy).
+  - To keep `clock_mix`, set `DFT_LOCKUP_POLICY=warn` (or `off`) and configure lockup insertion (at minimum: `DFT_LOCKUP_CELL_RISING` + `DFT_LOCKUP_CLOCK_PIN_RISING`, and likewise `*_FALLING` if negedge scan flops exist).
 - Polarity defaults to `DFT_POLARITY_MODE=strict` (no mixed polarity within a chain). To allow mixed polarity, set `DFT_POLARITY_MODE=mid` (falling-edge flops are stitched before rising-edge flops within each chain).
 
 ## Optional: Routing-aware ordering (trial route, then stitch)
@@ -131,20 +131,3 @@ To export a standalone DEF-style `SCANCHAINS` section for ATPG/external tooling:
   - For multi-chain designs (`scan_in_0/scan_out_0`, `scan_in_1/scan_out_1`, ...), use `--auto-chains`.
 - Or validate from an ODB (runs `scan_replace` + `execute_dft_plan` in-memory and writes a temp netlist):
   - `python3 flow/util/scan_chain_validate.py --odb flow/results/<platform>/<design>/<variant>/3_5_place_dp.odb --openroad $OPENROAD_EXE --liberty <lib> --sdc flow/results/<platform>/<design>/<variant>/3_place.sdc --ensure-ports --scan-replace --execute-dft-plan`
-
-## Compare “Before vs After” QoR
-
-- Routed wirelength / timing: compare `flow/results/<...>/metrics.json` and the OpenROAD/OpenSTA reports between `baseline_no_dft` and `with_dft`.
-- Scan chain cost proxy (Manhattan): emitted automatically (default) as `flow/reports/<platform>/<design>/<variant>/dft_scan_chain_cost_{pregrt,finish}.rpt` and as metrics `dft_scan_chain_cost_um` / `dft_scan_chain_max_step_um` in the stage JSONs.
-- Scan-chain wire metric on a fixed placement (also runs an NN heuristic for comparison):
-  - `python3 flow/util/scan_chain_cost.py --scan-replace --nearest-neighbor --openroad $OPENROAD_EXE --liberty <lib> --odb flow/results/<...>/3_5_place_dp.odb --sdc flow/results/<...>/3_place.sdc`
-
-## Visualize scan chain “jumps”
-
-To see the scan chain polyline between placed scan cells (and highlight the longest hops in red), generate a PNG (works in Codex CLI). By default it also draws dashed black edges from `scan_in_N/scan_out_N` port locations (DEF PINS) to the first/last scan cell. If multiple scan chains are detected, the plotter will default to showing all chains (combined) unless you explicitly select a single chain via `--scan-in/--scan-out`.
-
-- `python3 flow/util/scan_chain_plot.py --verilog flow/results/<platform>/<design>/<variant>/6_final.v --def flow/results/<platform>/<design>/<variant>/6_final.def --out flow/reports/<platform>/<design>/<variant>/dft_scan_chain.png`
-- Pin-level (SI/SO) plot directly from ODB:
-  - `openroad -python -exit flow/util/scan_chain_plot_openroad.py --odb flow/results/<platform>/<design>/<variant>/<stage>.odb --out flow/reports/<platform>/<design>/<variant>/dft_scan_chain_pins.png`
-
-To generate one plot per chain, use `--auto-chains --out <dir>`. To generate SVG instead, use a `.svg` output path (or pass `--format svg`).

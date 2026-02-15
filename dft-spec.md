@@ -2,18 +2,29 @@
 
 ## Status (ORFS/OpenROAD clean DFT branches)
 
-As of 2026-02-15, the v1.0 “mandatory” items in this doc are implemented in:
+As of 2026-02-15, the v1.0 *planning + stitching* requirements in this doc are implemented in:
 - OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`; DFT snapshot `17759df95`)
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`)
+
+Implementation notes (what the code actually does):
+- Planning/partitioning: hash-domain partitioning by clock/polarity (`tools/OpenROAD/src/dft/src/clock_domain/ClockDomainHash.cpp`) + multi-chain partitioning (`tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`).
+- Ordering/optimization: directed “TSP path” heuristic per chain (`tools/OpenROAD/src/dft/src/architect/Opt.cpp`) using SI/SO *pin* locations (`tools/OpenROAD/src/dft/src/utils/ScanPin.cpp`).
+  - Metrics: `PLACEMENT` (pin-to-pin Manhattan + superlinear long-edge penalty) and `PIN_TO_NET` (routing-aware pin-to-net to route guides/routes + placement tie-break).
+  - Solvers: `HEURISTIC`, `SCANOPT`, and `UCLA_SCANOPT` (restricted; falls back when unsupported).
+- Stitching: netlist update + optional lockup insertion (`tools/OpenROAD/src/dft/src/stitch/ScanStitch.cpp`).
+- Warn-only checks: clock gates, tri-state drivers, power-domain crossings (`tools/OpenROAD/src/dft/src/Dft.cpp`).
 
 Known gaps (explicitly called out as “Future extensions” below):
 - Multi-bit MBFF / multi-bit ScanFF support.
 - Power-domain crossings are warn-only (no automatic level shifter / isolation insertion).
 - No SCANDEF import; external “import” is via explicit ordering/constraints inputs.
+- “Congestion/blockage avoidance” is not a first-class model; the closest heuristic is `PIN_TO_NET` ordering against route guides/routes.
 
 The command execute_dft_plan should create one or more stitched (i.e., ordered) scan chains, satisfying user-specified constraints.
 Each scan chain is a “directed Hamiltonian path” over ScanFF instances. The chain will connect from a legal starting scan-in port of a ScanFF (the first ScanFF in the chain), to a legal ending scan-out port of another ScanFF (the last ScanFF in the chain).
-Generally, the one or more scan chains produced by execute_dft_plan attempt to minimize total estimated wirelength (subject to other constraints: hold timing, setup timing criticality, congestion and blockage avoidance, specified ScanFF grouping and ordering, etc.). The estimated wirelength of a given ScanFF1-to-ScanFF2 connection in a scan chain is the Manhattan distance between the scan-out port of ScanFF1 and the scan-in port of ScanFF2.  
+Generally, the one or more scan chains produced by execute_dft_plan attempt to minimize a proxy scan “wirelength” objective subject to constraints (grouping/ordering, chain count/length/balance, clock/polarity, etc.). In current OpenROAD DFT this proxy is:
+- default: Manhattan distance between `SO(ScanFF1)` and `SI(ScanFF2)` using pin locations, plus a superlinear long-edge (“jump”) penalty.
+- optional: routing-aware `PIN_TO_NET` incremental costs against global-route guides/routes, plus optional timing-aware penalties from STA slack at the source scan-out.
 Scan chain naming
 The user must be able to specify particular scan chain names.
 Scan chain grouping, assignment and ordering
@@ -43,14 +54,15 @@ Polarity
 The polarity constraint in its simplest form is that rising edge-triggered and falling edge-triggered ScanFFs cannot coexist in the same scan chain.  
 A “mid” way to handle ScanFF polarity is to ensure that all falling edge-triggered ScanFFs exist before all rising edge-triggered ScanFFs in any given scan chain. Note that such a structural constraint may be inconsistent with other constraints induced by grouping and ordering; such an inconsistency should be flagged by the tool.
 Polarity is a hard constraint. The tool must comprehend the polarity of all ScanFFs that it stitches together.
-KGF inputs 1/29: [KGF] Some other suggestions to consider
-You need to be able to exclude certain FFs from scan chain (i.e. reset synchronizer)
-In some cases using Qbar output (or changing the FF to one with a Qbar output) can help with setup timing
-Shift register recognition, shift registers do not need an additional scan chain through them
-Special cell recognition, clock gate cells need to be active during scan and internal tristate drivers should probably be disabled during scan or should not be disturbed by scan.
-Stitching to existing scan chains (i.e. in SRAM macros)
 
-The above are mandatory for a v1.0 version. Future extensions would include the following.
+Notes / optional features (implemented unless noted otherwise):
+- Exclude instances from scan planning/stitching (constraints-file `exclude*` directives and patterns).
+- Prefer Qbar for scan-out when scan-out pins aren’t tagged (`prefer_qbar`).
+- Shift-register recognition + exclusion (`exclude_shift_registers`).
+- Special-cell / power-domain recognition is warn-only (clock gates, tri-states, power-domain crossings).
+- “Stitch to existing chains” is supported at the boundary: chain endpoints can be specified as terminals (`port` or `inst/pin`) to stitch to macro pins or pre-existing scan ports.
+
+Future extensions would include the following.
 
 Support of multi-bit MBFFs and multi-bit ScanFFs 
 Internal scan MBFFs, derived cells, etc. (Google document)

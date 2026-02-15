@@ -7,7 +7,7 @@ repo. Keep it **high-signal** and link out to dedicated docs for deep dives.
 
 Docs:
 - `doc-DFT-howto.md`: quickstart (how to run ORFS with scan insertion)
-- `doc-DFT.md`: design/implementation notes (knobs, algorithm, QoR deltas, validation tools)
+- `doc-DFT.md`: design/implementation notes (knobs, algorithm, limitations)
 - `dft-spec.md`: v1.0 requirements we implemented against
 
 Local scratch/artifacts:
@@ -19,8 +19,8 @@ Branches on PrecisEDAnon GitHub:
   - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `dd50bacf29` (active; no toggles)
   - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) @ `caf412756f` (toggle variant)
 - OpenROAD-flow-scripts:
-  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; DFT snapshot `17759df95`)
-  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (toggle variant; DFT snapshot `d4d8e830d`)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; pins `tools/OpenROAD` to `dd50bacf29`)
+  - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (toggle variant; pins `tools/OpenROAD` to `caf412756f`)
 
 Note:
 - We do active work on the `*-clean-DFT` branches. The `*-toggle-rebased-DFT` branches are kept for comparison.
@@ -65,23 +65,13 @@ Algorithm sketch:
 - Clustering/partitioning across chains: K-means + reassignment (“swap/move”) under a per-chain max-length cap; also tries X/Y axis sweeps and a Hilbert space-filling sweep, then picks the assignment with the smallest worst within-chain Manhattan diameter (tie-break by worst X/Y gap) to suppress multi-chain outliers (“big jumps”).
 - Intra-chain ordering: `SCANOPT` (iterated local search with a superlinear long-edge penalty + worst-edge cleanup moves, including direction-preserving 3-opt segment swap); `HEURISTIC` is NN + insertion + bounded 2‑opt.
 
-QoR snapshot (example: `nangate45/ibex`):
-- DFT vs no-DFT typically costs ~`+8%` detailed-route WL, ~`+9%` instance area (seq area ~`+26%`), ~`+2%` total power.
-- Functional timing is reported with scan disabled (`set_case_analysis 0 scan_enable_0`), so WS deltas are small/run-dependent.
-
-Validation:
-- Preplaced regress: `python3 flow/util/dft_preplaced_regress.py ...` (see `doc-DFT.md`)
-- Plots:
-  - DEF+Verilog: `python3 flow/util/scan_chain_plot.py ...` (uses instance placements from DEF)
-  - Pin-level from ODB: `openroad -python -exit flow/util/scan_chain_plot_openroad.py --odb ... --out ...`
-
 Status (2026-02-15):
 - Clean branches are pushed and reproducible:
   - OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29` (pin-based distances + `report_dft_plan_pins`)
-  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`; DFT snapshot `17759df95`)
+  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`)
 - Toggle variants are kept for comparison:
   - OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
-  - ORFS: `ORFS-toggle-rebased-DFT` (DFT snapshot `d4d8e830d`)
+  - ORFS: `ORFS-toggle-rebased-DFT` (pins `tools/OpenROAD` to `caf412756f`)
 - OpenROAD vendors UCLA ScanOptpack under `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411` (no repo-root copy required).
 
 ---
