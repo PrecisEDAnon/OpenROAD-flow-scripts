@@ -3,8 +3,8 @@
 ## Status (ORFS/OpenROAD clean DFT branches)
 
 As of 2026-02-15, the v1.0 *planning + stitching* requirements in this doc are implemented in:
-- OpenROAD: `OpenROAD-clean-DFT` @ `6ab5afc529`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `6ab5afc529`)
+- OpenROAD: `OpenROAD-clean-DFT` @ `e1e46c796c`
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `e1e46c796c`)
 
 Implementation notes (what the code actually does):
 - Planning/partitioning: hash-domain partitioning by clock/polarity (`tools/OpenROAD/src/dft/src/clock_domain/ClockDomainHash.cpp`) + multi-chain partitioning (`tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`).

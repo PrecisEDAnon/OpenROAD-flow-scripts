@@ -16,10 +16,10 @@ Local scratch/artifacts:
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
-  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `6ab5afc529` (active; no toggles)
+  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `e1e46c796c` (active; no toggles)
   - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) @ `caf412756f` (toggle variant)
 - OpenROAD-flow-scripts:
-  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; pins `tools/OpenROAD` to `6ab5afc529`)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; pins `tools/OpenROAD` to `e1e46c796c`)
   - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (toggle variant; pins `tools/OpenROAD` to `caf412756f`)
 
 Note:
@@ -68,8 +68,8 @@ Algorithm sketch:
 
 Status (2026-02-15):
 - Clean branches are pushed and reproducible:
-  - OpenROAD: `OpenROAD-clean-DFT` @ `6ab5afc529` (pin-based distances + `report_dft_plan_pins`)
-  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `6ab5afc529`)
+  - OpenROAD: `OpenROAD-clean-DFT` @ `e1e46c796c` (pin-based distances + `report_dft_plan_pins`)
+  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `e1e46c796c`)
 - Toggle variants are kept for comparison:
   - OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
   - ORFS: `ORFS-toggle-rebased-DFT` (pins `tools/OpenROAD` to `caf412756f`)

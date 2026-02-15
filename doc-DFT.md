@@ -5,8 +5,8 @@ This doc summarizes DFT scan insertion + scan-chain planning/stitching in ORFS (
 ## Workspace snapshot (2026-02-15)
 
 Active (no-toggle) branches (PrecisEDAnon GitHub):
-- OpenROAD: `OpenROAD-clean-DFT` @ `6ab5afc529`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `6ab5afc529`)
+- OpenROAD: `OpenROAD-clean-DFT` @ `e1e46c796c`
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `e1e46c796c`)
 - OpenSTA: `d7cb9be1` (vanilla)
 
 Toggle variants (kept for comparison):
