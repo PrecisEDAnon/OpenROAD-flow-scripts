@@ -1430,6 +1430,7 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
 			  set scanopt_temp_control [dft_get_env DFT_SCANOPT_TEMP_CONTROL ""]
 			  set scanopt_t_div [dft_get_env DFT_SCANOPT_T_DIV ""]
 			  set vertical_weight [dft_get_env DFT_VERTICAL_WEIGHT ""]
+			  set blockage_weight [dft_get_env DFT_BLOCKAGE_WEIGHT ""]
 			  set max_imbalance [dft_get_env DFT_MAX_IMBALANCE ""]
 			  set constraints_file [dft_get_env DFT_SCAN_ORDER_CONSTRAINTS_FILE ""]
 	  set timing_setup_weight [dft_get_env DFT_TIMING_SETUP_WEIGHT ""]
@@ -1480,6 +1481,9 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
 		  }
 			  if { $vertical_weight != "" } {
 			    lappend dft_args -vertical_weight $vertical_weight
+			  }
+			  if { $blockage_weight != "" } {
+			    lappend dft_args -blockage_weight $blockage_weight
 			  }
 		  if { $max_imbalance != "" } {
 	    lappend dft_args -max_imbalance $max_imbalance

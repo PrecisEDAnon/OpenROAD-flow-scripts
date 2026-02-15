@@ -183,6 +183,7 @@ configuration file.
 | <a name="DFT_TIMING_HOLD_WEIGHT"></a>DFT_TIMING_HOLD_WEIGHT| Timing-aware scan ordering penalty weight for hold slack at the source scan-out pin. Pass-through to `set_dft_config -timing_hold_weight`.| 0|
 | <a name="DFT_TIMING_SETUP_WEIGHT"></a>DFT_TIMING_SETUP_WEIGHT| Timing-aware scan ordering penalty weight for setup slack at the source scan-out pin. Pass-through to `set_dft_config -timing_setup_weight`.| 0|
 | <a name="DFT_VERTICAL_WEIGHT"></a>DFT_VERTICAL_WEIGHT| Preferred-direction tuning for scan ordering. Vertical movement is weighted by this factor relative to horizontal. Pass-through to `set_dft_config -vertical_weight`.| 1.0|
+| <a name="DFT_BLOCKAGE_WEIGHT"></a>DFT_BLOCKAGE_WEIGHT| Blockage-aware scan ordering penalty weight. Adds an estimated detour cost when a straight rectilinear scan connection would cross hard macros / placement blockages. Pass-through to `set_dft_config -blockage_weight`.| 1.0|
 | <a name="DFT_WRITE_SCANDEF"></a>DFT_WRITE_SCANDEF| Export a SCANDEF/DEF-style `SCANCHAINS` section to a standalone file in the final stage (calls `write_scandef -file ...` in OpenROAD).| 0|
 | <a name="DIE_AREA"></a>DIE_AREA| The die area specified as a list of lower-left and upper-right corners in microns (X1 Y1 X2 Y2).| |
 | <a name="DONT_BUFFER_PORTS"></a>DONT_BUFFER_PORTS| Do not buffer input/output ports during floorplanning.| 0|
@@ -404,6 +405,7 @@ configuration file.
 - [DFT_TIMING_HOLD_WEIGHT](#DFT_TIMING_HOLD_WEIGHT)
 - [DFT_TIMING_SETUP_WEIGHT](#DFT_TIMING_SETUP_WEIGHT)
 - [DFT_VERTICAL_WEIGHT](#DFT_VERTICAL_WEIGHT)
+- [DFT_BLOCKAGE_WEIGHT](#DFT_BLOCKAGE_WEIGHT)
 - [DIE_AREA](#DIE_AREA)
 - [FLOORPLAN_DEF](#FLOORPLAN_DEF)
 - [FOOTPRINT](#FOOTPRINT)
@@ -574,6 +576,7 @@ configuration file.
 - [DFT_TIMING_HOLD_WEIGHT](#DFT_TIMING_HOLD_WEIGHT)
 - [DFT_TIMING_SETUP_WEIGHT](#DFT_TIMING_SETUP_WEIGHT)
 - [DFT_VERTICAL_WEIGHT](#DFT_VERTICAL_WEIGHT)
+- [DFT_BLOCKAGE_WEIGHT](#DFT_BLOCKAGE_WEIGHT)
 - [GLOBAL_ROUTE_ARGS](#GLOBAL_ROUTE_ARGS)
 - [HOLD_SLACK_MARGIN](#HOLD_SLACK_MARGIN)
 - [IO_PLACER_H](#IO_PLACER_H)
@@ -690,4 +693,3 @@ configuration file.
 - [TAP_CELL_NAME](#TAP_CELL_NAME)
 - [TECH_LEF](#TECH_LEF)
 - [USE_FILL](#USE_FILL)
-

@@ -71,6 +71,12 @@ To bias scan ordering against vertical movement (preferred horizontal wiring), s
 
 - `DFT_VERTICAL_WEIGHT=<positive float>` (default `1.0`)
 
+## Optional: Blockage-aware ordering (macro/blockage detour penalty)
+
+To penalize scan links that would cross hard macros / placement blockages, set:
+
+- `DFT_BLOCKAGE_WEIGHT=<nonnegative float>` (default `1.0`, `0` disables)
+
 ## Optional: Chain length balancing (max imbalance)
 
 To constrain chain lengths to be reasonably balanced (reduces tester time at the cost of potentially more scan chains), set:

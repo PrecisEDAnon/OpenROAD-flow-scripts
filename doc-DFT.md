@@ -5,8 +5,8 @@ This doc summarizes DFT scan insertion + scan-chain planning/stitching in ORFS (
 ## Workspace snapshot (2026-02-15)
 
 Active (no-toggle) branches (PrecisEDAnon GitHub):
-- OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`)
+- OpenROAD: `OpenROAD-clean-DFT` @ `6ab5afc529`
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `6ab5afc529`)
 - OpenSTA: `d7cb9be1` (vanilla)
 
 Toggle variants (kept for comparison):
@@ -26,8 +26,8 @@ Toggle variants (kept for comparison):
 - ORFS hooks support `DFT_ENABLE=1` end-to-end: `scan_replace`, scan port creation, optional scan port placement, chain stitching, and reporting.
 - OpenROAD scan ordering:
   - Metrics:
-    - `PLACEMENT`: pin-based cost using SI/SO locations (scan-out → scan-in), with a superlinear long-edge penalty to suppress “jumps”.
-    - `PIN_TO_NET`: routing-aware pin-to-net distance to scan-out net guides/routes, plus a placement tie-break and the same long-edge penalty.
+    - `PLACEMENT`: pin-based cost using SI/SO locations (scan-out → scan-in), with a superlinear long-edge penalty to suppress “jumps” and a blockage detour penalty (`DFT_BLOCKAGE_WEIGHT`, default `1.0`).
+    - `PIN_TO_NET`: routing-aware pin-to-net distance to scan-out net guides/routes, plus a placement tie-break, the same long-edge penalty, and the same blockage detour penalty.
   - Solvers:
     - `HEURISTIC`: greedy NN + farthest insertion + bounded 2-opt (rtree fallback for huge chains).
     - `SCANOPT`: in-tree ScanOpt-style iterated local search (double-bridge kicks + descent over an O(n²) cost matrix).
@@ -204,10 +204,10 @@ This is the core of `execute_dft_plan` / `scan_opt`: given placed scan flops, pr
 
 Per scan chain, minimize a proxy cost (default `PLACEMENT` metric):
 
-- `cost = Σ edge_cost(i, i+1)` where `edge_cost` is based on pin-to-pin Manhattan distance (`SO[i]` → `SI[i+1]`) with a superlinear “jump” penalty and optional timing weighting
+- `cost = Σ edge_cost(i, i+1)` where `edge_cost` is based on pin-to-pin Manhattan distance (`SO[i]` → `SI[i+1]`) with a superlinear “jump” penalty, a blockage detour penalty (`DFT_BLOCKAGE_WEIGHT`, default `1.0`), and optional timing weighting
 - plus endpoint terms when chain endpoints have locations:
-  - `+ ManhattanDist(BeginPort, SI[first])`
-  - `+ ManhattanDist(SO[last], EndPort)`
+  - `+ point_cost(BeginPort, SI[first])`
+  - `+ point_cost(SO[last], EndPort)`
 
 Where:
 - `SI[k]` is the scan-in pin location of scan cell `k`, and `SO[k]` is the scan-out pin location.

@@ -1111,6 +1111,15 @@ DFT_VERTICAL_WEIGHT:
   stages:
     - floorplan
     - grt
+DFT_BLOCKAGE_WEIGHT:
+  description: >
+    Blockage-aware scan ordering penalty weight. Adds an estimated detour cost
+    when a straight rectilinear scan connection would cross hard macros /
+    placement blockages. Pass-through to `set_dft_config -blockage_weight`.
+  default: 1.0
+  stages:
+    - floorplan
+    - grt
 DFT_MAX_IMBALANCE:
   description: >
     Maximum allowed chain-length imbalance (percent). Pass-through to

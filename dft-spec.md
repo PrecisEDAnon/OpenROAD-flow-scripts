@@ -3,8 +3,8 @@
 ## Status (ORFS/OpenROAD clean DFT branches)
 
 As of 2026-02-15, the v1.0 *planning + stitching* requirements in this doc are implemented in:
-- OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`)
+- OpenROAD: `OpenROAD-clean-DFT` @ `6ab5afc529`
+- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `6ab5afc529`)
 
 Implementation notes (what the code actually does):
 - Planning/partitioning: hash-domain partitioning by clock/polarity (`tools/OpenROAD/src/dft/src/clock_domain/ClockDomainHash.cpp`) + multi-chain partitioning (`tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`).
@@ -18,7 +18,8 @@ Known gaps (explicitly called out as “Future extensions” below):
 - Multi-bit MBFF / multi-bit ScanFF support.
 - Power-domain crossings are warn-only (no automatic level shifter / isolation insertion).
 - No SCANDEF import; external “import” is via explicit ordering/constraints inputs.
-- “Congestion/blockage avoidance” is not a first-class model; the closest heuristic is `PIN_TO_NET` ordering against route guides/routes.
+- “Congestion avoidance” is not a first-class model; the closest heuristic is `PIN_TO_NET` ordering against route guides/routes.
+- “Blockage avoidance” is supported as a detour penalty term in ordering cost (`set_dft_config -blockage_weight`, default `1.0`).
 
 The command execute_dft_plan should create one or more stitched (i.e., ordered) scan chains, satisfying user-specified constraints.
 Each scan chain is a “directed Hamiltonian path” over ScanFF instances. The chain will connect from a legal starting scan-in port of a ScanFF (the first ScanFF in the chain), to a legal ending scan-out port of another ScanFF (the last ScanFF in the chain).

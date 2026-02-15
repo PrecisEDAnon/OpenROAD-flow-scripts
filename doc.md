@@ -16,10 +16,10 @@ Local scratch/artifacts:
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
-  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `dd50bacf29` (active; no toggles)
+  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `6ab5afc529` (active; no toggles)
   - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) @ `caf412756f` (toggle variant)
 - OpenROAD-flow-scripts:
-  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; pins `tools/OpenROAD` to `dd50bacf29`)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; pins `tools/OpenROAD` to `6ab5afc529`)
   - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (toggle variant; pins `tools/OpenROAD` to `caf412756f`)
 
 Note:
@@ -51,6 +51,7 @@ Key knobs (ORFS-clean-DFT):
 - `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; QoR-focused) / `HEURISTIC` / `UCLA_SCANOPT` (reference; placement-only, needs fixed begin/end)
 - `DFT_SCANOPT_TIME_LIMIT`: total time budget (seconds) split across chains (default `15`)
 - `DFT_SCANOPT_ROUNDS`: SCANOPT iteration budget (default `500000`)
+- `DFT_BLOCKAGE_WEIGHT`: blockage-aware detour penalty (default `1.0`, `0` disables)
 - `DFT_DONT_TOUCH_SCAN_NETS`: marks most SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn (scan_enable tree is kept optimizable)
 - `DFT_BUFFER_SCAN_ENABLE`: buffers/splits `scan_enable_0` to control fanout and avoid GRT freezes (default `1`)
   - `DFT_SCAN_ENABLE_MAX_FANOUT` (default `64`)
@@ -67,8 +68,8 @@ Algorithm sketch:
 
 Status (2026-02-15):
 - Clean branches are pushed and reproducible:
-  - OpenROAD: `OpenROAD-clean-DFT` @ `dd50bacf29` (pin-based distances + `report_dft_plan_pins`)
-  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `dd50bacf29`)
+  - OpenROAD: `OpenROAD-clean-DFT` @ `6ab5afc529` (pin-based distances + `report_dft_plan_pins`)
+  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `6ab5afc529`)
 - Toggle variants are kept for comparison:
   - OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
   - ORFS: `ORFS-toggle-rebased-DFT` (pins `tools/OpenROAD` to `caf412756f`)
