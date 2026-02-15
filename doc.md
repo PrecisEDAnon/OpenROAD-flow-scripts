@@ -48,7 +48,7 @@ Key knobs (ORFS-clean-DFT):
 - `DFT_PREFER_QBAR`: prefer using `QN`/`Q_N` as scan-out when scan-out ports aren’t tagged (can reduce load on functional `Q` nets; introduces scan-path inversion)
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
 - `DFT_SCAN_ORDER_METRIC`: `PIN_TO_NET` (routing-aware) or `PLACEMENT`
-- `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; QoR-focused) / `HEURISTIC`
+- `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; QoR-focused) / `HEURISTIC` / `UCLA_SCANOPT` (reference; placement-only, needs fixed begin/end)
 - `DFT_SCANOPT_TIME_LIMIT`: total time budget (seconds) split across chains (default `15`)
 - `DFT_SCANOPT_ROUNDS`: SCANOPT iteration budget (default `500000`)
 - `DFT_DONT_TOUCH_SCAN_NETS`: marks most SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn (scan_enable tree is kept optimizable)

@@ -29,8 +29,13 @@ Toggle variants (kept for comparison):
 
 - ORFS hooks support `DFT_ENABLE=1` end-to-end: `scan_replace`, scan port creation, optional scan port placement, chain stitching, and reporting.
 - OpenROAD scan ordering:
-  - `PLACEMENT` metric uses consistent pin-to-pin Manhattan distance (scan-out pin → next scan-in pin).
-  - `SCANOPT` solver integrates UCLA ScanOptpack (vendored under `tools/OpenROAD/src/dft/third_party/UCLApack-3-010411`).
+  - Metrics:
+    - `PLACEMENT`: pin-based cost using SI/SO locations (scan-out → scan-in), with a superlinear long-edge penalty to suppress “jumps”.
+    - `PIN_TO_NET`: routing-aware pin-to-net distance to scan-out net guides/routes, plus a placement tie-break and the same long-edge penalty.
+  - Solvers:
+    - `HEURISTIC`: greedy NN + farthest insertion + bounded 2-opt (rtree fallback for huge chains).
+    - `SCANOPT`: in-tree ScanOpt-style iterated local search (double-bridge kicks + descent over an O(n²) cost matrix).
+    - `UCLA_SCANOPT`: UCLA ScanOptpack reference solver (vendored), but only works for `PLACEMENT` with fixed begin/end and no constraints (else falls back to `SCANOPT`).
 - For A/B comparisons, fix `DFT_SCANOPT_SEED` and increase `DFT_SCANOPT_TIME_LIMIT` to reduce run-to-run variance from tight time budgets.
 - ORFS scan-chain tooling uses pin-level asymmetric costs (scan-out → scan-in) via `report_dft_plan_pins -verbose`.
 - Scan enable fanout control is handled in OpenROAD as `buffer_scan_enable`; ORFS calls it by default via `DFT_BUFFER_SCAN_ENABLE=1` (falls back to legacy `insert_buffer` if the command is unavailable).
@@ -566,9 +571,10 @@ Notes:
 
 ## Current Limitations / Known Gaps
 
-- OpenROAD supports two ordering solvers via `set_dft_config -scan_order_solver`:
+- OpenROAD supports three ordering solvers via `set_dft_config -scan_order_solver`:
   - `HEURISTIC`: NN + farthest-insertion + bounded 2-opt (rtree fallback for huge chains)
   - `SCANOPT`: iterated local search (double-bridge kicks + relocate/swap/2-opt) with a superlinear long-edge penalty to suppress “jumps”
+  - `UCLA_SCANOPT`: UCLA ScanOptpack reference solver (vendored), but only supports unconstrained `PLACEMENT` ordering with fixed begin/end
 - `DFT_SCANOPT_TIME_LIMIT` is treated as a total budget and is split across chains to avoid runtime scaling with chain count.
 - ORFS can benchmark external scan ordering solvers (e.g., OR-Tools/LKH) via `DFT_SCAN_SOLVER=scanopt_next` + `DFT_SCAN_SOLVER_BIN` (TSV in → order out). The bundled `scanopt_next` is a lightweight NumPy-only reference, not OR-Tools.
 - ORFS exposes `DFT_CHAIN_COUNT` / `DFT_MAX_CHAIN_LENGTH` / `DFT_MAX_CHAINS` to tune chain count/length; beyond that, the main remaining lever for multi-chain QoR is scan port placement (scan-in/out “stems”). ORFS mitigates this by re-placing `scan_in_N`/`scan_out_N` near their chain endpoints (auto-enabled for multi-chain; override with `DFT_PLACE_SCAN_PORTS=0`).
