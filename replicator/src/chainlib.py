@@ -117,7 +117,7 @@ def resolveChainNode(block, node):
 def resolveChainNodeRenderableBox(block, node):
     iterm = block.findITerm(node)
     if iterm is not None:
-        return iterm.getInst().getBBox()
+        return iterm.getBBox()
     
     bterm = block.findBTerm(node)
     if bterm is not None:
@@ -144,13 +144,48 @@ def isInternalArc(e):
     n1_name = n1_split[0] if len(n1_split) == 2 else ""
     return n0_name == n1_name
 
+def _bbox_center_xy(bbox):
+    return int((bbox.xMin() + bbox.xMax()) // 2), int((bbox.yMin() + bbox.yMax()) // 2)
+
+def _bterm_xy(bterm):
+    if hasattr(bterm, "getFirstPinLocation"):
+        try:
+            ok, x, y = bterm.getFirstPinLocation()
+            if ok:
+                return int(x), int(y)
+        except Exception:
+            pass
+    return _bbox_center_xy(bterm.getBBox())
+
+def _iterm_xy(iterm):
+    if hasattr(iterm, "getAvgXY"):
+        try:
+            ok, x, y = iterm.getAvgXY()
+            if ok:
+                return int(x), int(y)
+        except Exception:
+            pass
+    return _bbox_center_xy(iterm.getBBox())
+
 def getNodeRenderableCoordinate(block, node):
+    iterm = block.findITerm(node)
+    if iterm is not None:
+        return _iterm_xy(iterm)
+    bterm = block.findBTerm(node)
+    if bterm is not None:
+        return _bterm_xy(bterm)
     bbox = resolveChainNodeRenderableBox(block, node)
-    return bbox.xMin(), bbox.yMin()
+    return _bbox_center_xy(bbox) if bbox is not None else (0, 0)
 
 def getNodeCostableCoordinate(block, node):
+    iterm = block.findITerm(node)
+    if iterm is not None:
+        return _iterm_xy(iterm)
+    bterm = block.findBTerm(node)
+    if bterm is not None:
+        return _bterm_xy(bterm)
     bbox = resolveChainNodeCostableBox(block, node)
-    return bbox.xMin(), bbox.yMin()
+    return _bbox_center_xy(bbox) if bbox is not None else (0, 0)
 
 def getEdgeAsRenderableCoords(block, edge):
     return getNodeRenderableCoordinate(block, edge[0]), getNodeRenderableCoordinate(block, edge[1]) 
@@ -204,18 +239,84 @@ def graph(block, chains, output, highlight=None, highlight_label=None):
     for chain, color in zip(chains, ["red", "blue", "purple", "orange", "green"] * 100):
             
         renderable = getChainRenderableEdges(block, chain)
-        core = renderable[1:-1]
-        ends = [renderable[0], renderable[-1]]
-        ax.add_collection(LineCollection(core, colors=color, path_effects=[pe.Stroke(linewidth=2, foreground="black"), pe.Normal()]))
-        ax.add_collection(LineCollection(ends, colors="black", linestyles='dashed'))
-        ax.scatter(ends[0][1][0], ends[0][1][1], s=7, c=color, path_effects=[pe.Stroke(linewidth=4, foreground="black"), pe.Stroke(linewidth=3, foreground=color)], zorder=100000)
-        ax.scatter(ends[1][0][0], ends[1][0][1], s=7, c=color, path_effects=[pe.Stroke(linewidth=4, foreground="black"), pe.Stroke(linewidth=3, foreground=color)], zorder=100000)
+        if not renderable:
+            continue
+
+        core = renderable[1:-1] if len(renderable) > 2 else []
+        ends = [renderable[0], renderable[-1]] if len(renderable) > 1 else [renderable[0]]
+        if core:
+            ax.add_collection(
+                LineCollection(
+                    core,
+                    colors=color,
+                    path_effects=[pe.Stroke(linewidth=2, foreground="black"), pe.Normal()],
+                )
+            )
+        ax.add_collection(LineCollection(ends, colors="black", linestyles="dashed"))
+
+        # Mark scan direction explicitly:
+        # - scan_in_* port: green triangle
+        # - scan_out_* port: red square
+        start_xy = getNodeRenderableCoordinate(block, chain[0])
+        end_xy = getNodeRenderableCoordinate(block, chain[-1])
+        ax.scatter(
+            start_xy[0],
+            start_xy[1],
+            s=18,
+            c="green",
+            marker="^",
+            edgecolors="black",
+            linewidths=0.4,
+            zorder=120000,
+        )
+        ax.scatter(
+            end_xy[0],
+            end_xy[1],
+            s=18,
+            c="red",
+            marker="s",
+            edgecolors="black",
+            linewidths=0.4,
+            zorder=120000,
+        )
+
+        # Highlight the first/last scanff endpoints (adjacent to scan ports).
+        if len(chain) >= 2:
+            first_xy = getNodeRenderableCoordinate(block, chain[1])
+            ax.scatter(
+                first_xy[0],
+                first_xy[1],
+                s=10,
+                c=color,
+                path_effects=[pe.Stroke(linewidth=4, foreground="black"), pe.Stroke(linewidth=3, foreground=color)],
+                zorder=110000,
+            )
+        if len(chain) >= 3:
+            last_xy = getNodeRenderableCoordinate(block, chain[-2])
+            ax.scatter(
+                last_xy[0],
+                last_xy[1],
+                s=10,
+                c=color,
+                path_effects=[pe.Stroke(linewidth=4, foreground="black"), pe.Stroke(linewidth=3, foreground=color)],
+                zorder=110000,
+            )
+
+        # Arrowheads on the end segments (scan_in -> first_ff, last_ff -> scan_out).
+        for (src, dst) in [ends[0], ends[-1]]:
+            ax.annotate(
+                "",
+                xy=dst,
+                xytext=src,
+                arrowprops=dict(arrowstyle="->", color="black", lw=0.6, shrinkA=0, shrinkB=0),
+                zorder=125000,
+            )
     
         for node in chain:
             if highlight is not None and highlight in node:
                 highlights_count += 1
                 coord = getNodeRenderableCoordinate(block, node)
-                ax.scatter(coord[0], coord[1], s=1, c="green", zorder=150000)
+                ax.scatter(coord[0], coord[1], s=1, c="gold", zorder=150000)
             
         
             

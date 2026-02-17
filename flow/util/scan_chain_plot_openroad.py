@@ -655,6 +655,70 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     ],
                 )
 
+        # Explicitly mark scan direction on ports (avoids ambiguity when reading the plot).
+        scan_in_nodes = [
+            n
+            for n in sg.nodes
+            if sg.nodes[n].get("kind") == "bterm"
+            and sg.nodes[n].get("name", "").startswith(args.scan_in_prefix)
+        ]
+        scan_out_nodes = [
+            n
+            for n in sg.nodes
+            if sg.nodes[n].get("kind") == "bterm"
+            and sg.nodes[n].get("name", "").startswith(args.scan_out_prefix)
+        ]
+
+        for n in scan_in_nodes:
+            ax.scatter(
+                [sg.nodes[n]["x"]],
+                [sg.nodes[n]["y"]],
+                s=28,
+                c="green",
+                marker="^",
+                edgecolors="black",
+                linewidths=0.5,
+                zorder=20,
+            )
+        for n in scan_out_nodes:
+            ax.scatter(
+                [sg.nodes[n]["x"]],
+                [sg.nodes[n]["y"]],
+                s=28,
+                c="red",
+                marker="s",
+                edgecolors="black",
+                linewidths=0.5,
+                zorder=20,
+            )
+
+        # Arrowheads on endpoint segments: scan_in -> first scanff, last scanff -> scan_out.
+        for port in scan_in_nodes + scan_out_nodes:
+            nbrs = list(sg.neighbors(port))
+            if not nbrs:
+                continue
+            nbr = nbrs[0]
+            ed = sg.get_edge_data(port, nbr) or {}
+            src_xy = ed.get("src_xy")
+            dst_xy = ed.get("dst_xy")
+            if src_xy is None:
+                src_xy = (sg.nodes[port]["x"], sg.nodes[port]["y"])
+            if dst_xy is None:
+                dst_xy = (sg.nodes[nbr]["x"], sg.nodes[nbr]["y"])
+            ax.annotate(
+                "",
+                xy=dst_xy,
+                xytext=src_xy,
+                arrowprops=dict(
+                    arrowstyle="->",
+                    color="black",
+                    lw=0.8,
+                    shrinkA=0,
+                    shrinkB=0,
+                ),
+                zorder=21,
+            )
+
     # Optional overlay markers for clock domains / polarity and constraint groups.
     highlight_groups: Dict[str, Set[str]] = {}
     if args.constraints_file is not None:

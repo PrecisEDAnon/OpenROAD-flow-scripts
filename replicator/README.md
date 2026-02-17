@@ -38,3 +38,7 @@ All other tests should produce a stitched solution and a `plot.png`.
 Some runs intentionally pin scan ports to `(0,0)` and may emit global-route errors like
 `GRT-0080 Invalid pin placement`; these are non-fatal for this harness and do not
 indicate a DFT planning/stitching failure.
+
+Plot legend (in `plot.png`):
+- Scan direction: `scan_in_*` is a green triangle, `scan_out_*` is a red square.
+- When groups/polarity/clocks are highlighted by the test, matching flops are shown as small gold dots.
