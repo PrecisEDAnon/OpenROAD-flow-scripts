@@ -13,6 +13,11 @@ scan_in_* port), and from scan_out_* ports back to the last scan flop.
 The plot style is intentionally similar to the matplotlib/networkx "highlighter"
 script used during development: colored core edges with a black outline, and
 black dashed edges at chain ends.
+
+Scan direction is marked explicitly:
+- `scan_in_*` ports: green triangle
+- `scan_out_*` ports: red square
+- Arrowheads on the endpoint edges
 """
 
 from __future__ import annotations

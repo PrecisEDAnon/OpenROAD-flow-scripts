@@ -2,15 +2,16 @@
 
 ## Status (ORFS/OpenROAD clean DFT branches)
 
-As of 2026-02-15, the v1.0 *planning + stitching* requirements in this doc are implemented in:
-- OpenROAD: `OpenROAD-clean-DFT` @ `e1e46c796c`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `e1e46c796c`)
+As of 2026-02-18, the v1.0 *planning + stitching* requirements in this doc are implemented in:
+- OpenROAD: `OpenROAD-clean-DFT` @ `847cdffe8a`
+- ORFS: `ORFS-clean-DFT` @ `8d354bb36` (pins `tools/OpenROAD` to `847cdffe8a`)
 
 Implementation notes (what the code actually does):
 - Planning/partitioning: hash-domain partitioning by clock/polarity (`tools/OpenROAD/src/dft/src/clock_domain/ClockDomainHash.cpp`) + multi-chain partitioning (`tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`).
 - Ordering/optimization: directed “TSP path” heuristic per chain (`tools/OpenROAD/src/dft/src/architect/Opt.cpp`) using SI/SO *pin* locations (`tools/OpenROAD/src/dft/src/utils/ScanPin.cpp`).
   - Metrics: `PLACEMENT` (pin-to-pin Manhattan + superlinear long-edge penalty) and `PIN_TO_NET` (routing-aware pin-to-net to route guides/routes + placement tie-break).
   - Solvers: `HEURISTIC`, `SCANOPT` (UCLA ScanOptpack; `PLACEMENT` only; used as a preference where possible), and `ILS` (OpenROAD in-tree; used for `PIN_TO_NET` and as fallback).
+    - Note: UCLA `SCANOPT` does not have a time-budget mechanism upstream; `-scanopt_time_limit` applies to in-tree `ILS`.
 - Stitching: netlist update + optional lockup insertion (`tools/OpenROAD/src/dft/src/stitch/ScanStitch.cpp`).
 - Warn-only checks: clock gates, tri-state drivers, power-domain crossings (`tools/OpenROAD/src/dft/src/Dft.cpp`).
 
@@ -35,6 +36,9 @@ Strict order: the scan chain must, for the ScanFFs in a given group, follow the 
 Partial order: a “before” semantics must be made available to the user, to force a given FF_1 or FF_group_1 to occur in the scan chain solution before another given FF_2 or FF_group_2.
 As mentioned in (a) above: a group may be assigned to another group. 
 In the execute_dft_plan solution, the ScanFFs assigned to any given group must remain together in a single (i.e., exactly one) scan chain.
+Implementation note (OpenROAD constraints file):
+- The `group` directive is interpreted as an **ordering/contiguity** constraint (ScanOpt-style). It keeps members together *within a chain’s scan order*, but does not, by itself, force all members into the same chain when `K>1`.
+- To force “must be in exactly one chain”, use `assign <chain> <inst|group...>` (or explicit fixed paths/edges).
 Scan chain begin-end port constraints
 Each scan chain must have user-specified BeginPort and EndPort locations. These are (x,y) locations (not FFs) – or, pins of placed instances / pads – in the place-and-route region.
 The scan chain ordering optimization must include in its calculation of chain cost the estimated wirelength from BeginPort to the first ScanFF’s scan-in port, and the estimated wirelength from the last ScanFF’s scan-out port to EndPort.
@@ -76,6 +80,8 @@ Support for importing and exporting scan chains to support external tools (SCAND
 Implemented:
 - Export: `write_scandef -file <path>` (writes DEF-style `SCANCHAINS` from ODB scan chains created by `execute_dft_plan`).
 - Import + stitch: `read_def -incremental <scandef>` + `set_dft_config -use_existing_scan_chains 1` + `execute_dft_plan` (stitches in imported order).
+Note:
+- OpenROAD `write_scandef` currently prints the `ORDERED` list in the opposite direction of scan shifting (the first listed cell is adjacent to `scan_out_*`). For “scan_in → scan_out” order, reverse the list.
 
 Future extensions:
 This can help future scan insertion tools like Difetto

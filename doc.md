@@ -9,6 +9,7 @@ Docs:
 - `doc-DFT-howto.md`: quickstart (how to run ORFS with scan insertion)
 - `doc-DFT.md`: design/implementation notes (knobs, algorithm, limitations)
 - `dft-spec.md`: v1.0 requirements we implemented against
+- `replicator/README.md`: self-contained JPEG-REAL1 reproducer harness
 
 Local scratch/artifacts:
 - Keep local-only outputs under `untracked/` (not tracked; ignored via `.git/info/exclude`)
@@ -16,10 +17,10 @@ Local scratch/artifacts:
 
 Branches on PrecisEDAnon GitHub:
 - OpenROAD:
-  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `e1e46c796c` (active; no toggles)
+  - [`OpenROAD-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-clean-DFT) @ `847cdffe8a` (active; no toggles)
   - [`OpenROAD-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD/tree/OpenROAD-toggle-rebased-DFT) @ `caf412756f` (toggle variant)
 - OpenROAD-flow-scripts:
-  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) (active; no toggles; pins `tools/OpenROAD` to `e1e46c796c`)
+  - [`ORFS-clean-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-clean-DFT) @ `8d354bb36` (active; no toggles; pins `tools/OpenROAD` to `847cdffe8a`)
   - [`ORFS-toggle-rebased-DFT`](https://github.com/PrecisEDAnon/OpenROAD-flow-scripts/tree/ORFS-toggle-rebased-DFT) (toggle variant; pins `tools/OpenROAD` to `caf412756f`)
 
 Note:
@@ -70,10 +71,10 @@ Algorithm sketch:
 - Clustering/partitioning across chains: K-means + reassignment (“swap/move”) under a per-chain max-length cap; also tries X/Y axis sweeps and a Hilbert space-filling sweep, then picks the assignment with the smallest worst within-chain Manhattan diameter (tie-break by worst X/Y gap) to suppress multi-chain outliers (“big jumps”).
 - Intra-chain ordering: `SCANOPT` (UCLA ScanOptpack; `PLACEMENT` only) or `ILS` (iterated local search with a superlinear long-edge penalty + worst-edge cleanup moves, including direction-preserving 3-opt segment swap); `HEURISTIC` is NN + insertion + bounded 2‑opt.
 
-Status (2026-02-15):
+Status (2026-02-18):
 - Clean branches are pushed and reproducible:
-  - OpenROAD: `OpenROAD-clean-DFT` @ `e1e46c796c` (pin-based distances + `report_dft_plan_pins`)
-  - ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `e1e46c796c`)
+  - OpenROAD: `OpenROAD-clean-DFT` @ `847cdffe8a` (stable constraints + SCANOPT integration)
+  - ORFS: `ORFS-clean-DFT` @ `8d354bb36` (includes `replicator/` harness; pins `tools/OpenROAD` to `847cdffe8a`)
 - Toggle variants are kept for comparison:
   - OpenROAD: `OpenROAD-toggle-rebased-DFT` @ `caf412756f`
   - ORFS: `ORFS-toggle-rebased-DFT` (pins `tools/OpenROAD` to `caf412756f`)

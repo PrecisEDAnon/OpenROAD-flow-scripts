@@ -104,6 +104,8 @@ Document for detailed local build from sources and installation steps found [her
   [here](https://openroad-flow-scripts.readthedocs.io/en/latest/tutorials/FlowTutorial.html).
 - To watch ORFS flow tutorial videos, check
   [here](https://theopenroadproject.org/video).
+- For DFT scan insertion / scan-chain planning & stitching (clean DFT branches), see
+  `doc-DFT-howto.md`, `doc-DFT.md`, and the `replicator/README.md` reproducer harness.
 
 ## Building from your own git repository
 

@@ -2,11 +2,11 @@
 
 This doc summarizes DFT scan insertion + scan-chain planning/stitching in ORFS (clean DFT branches). For historical context, **OpenROAD `7bc521f36a` is treated as the “baseline DFT”** (often yields 0 chains due to scan-pin recognition failures). All work here assumes a **vanilla OpenSTA** requirement (no `src/sta` parser changes required).
 
-## Workspace snapshot (2026-02-15)
+## Workspace snapshot (2026-02-18)
 
 Active (no-toggle) branches (PrecisEDAnon GitHub):
-- OpenROAD: `OpenROAD-clean-DFT` @ `e1e46c796c`
-- ORFS: `ORFS-clean-DFT` (pins `tools/OpenROAD` to `e1e46c796c`)
+- OpenROAD: `OpenROAD-clean-DFT` @ `847cdffe8a`
+- ORFS: `ORFS-clean-DFT` @ `8d354bb36` (pins `tools/OpenROAD` to `847cdffe8a`)
 - OpenSTA: `d7cb9be1` (vanilla)
 
 Toggle variants (kept for comparison):
@@ -21,7 +21,7 @@ Toggle variants (kept for comparison):
 - Ensure it works with **vanilla OpenSTA** (no OpenSTA parser patches required).
 - Align with the v1.0 requirements captured in `dft-spec.md`.
 
-## Status (as of 2026-02-15)
+## Status (as of 2026-02-18)
 
 - ORFS hooks support `DFT_ENABLE=1` end-to-end: `scan_replace`, scan port creation, optional scan port placement, chain stitching, and reporting.
 - OpenROAD scan ordering:
@@ -32,13 +32,36 @@ Toggle variants (kept for comparison):
     - `HEURISTIC`: greedy NN + farthest insertion + bounded 2-opt (rtree fallback for huge chains).
     - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD uses UCLA as a preference while still enforcing constraints.
     - `ILS`: OpenROAD in-tree iterated local search solver (used automatically for `PIN_TO_NET` ordering).
-- For A/B comparisons (especially with `ILS`), fix `DFT_SCANOPT_SEED` and increase `DFT_SCANOPT_TIME_LIMIT` to reduce run-to-run variance from tight time budgets.
+- Time budgeting:
+  - UCLA `SCANOPT` has no upstream time-budget mechanism; use `DFT_SCANOPT_ROUNDS` to control runtime.
+  - `DFT_SCANOPT_TIME_LIMIT` applies to the in-tree `ILS` solver (split across chains).
+- For A/B comparisons, fix `DFT_SCANOPT_SEED` and use either `DFT_SCANOPT_ROUNDS` (`SCANOPT`) or `DFT_SCANOPT_TIME_LIMIT` (`ILS`) for stable runtimes.
 - ORFS scan-chain tooling uses pin-level asymmetric costs (scan-out → scan-in) via `report_dft_plan_pins -verbose`.
 - Scan enable fanout control is handled in OpenROAD as `buffer_scan_enable`; ORFS calls it by default via `DFT_BUFFER_SCAN_ENABLE=1` (falls back to legacy `insert_buffer` if the command is unavailable).
 - `polarity_mode=strict` is the default (so mixed-edge flops are split across chains unless explicitly overridden).
 - ORFS `final_report.tcl` no longer hard-requires `orfs_write_db` (falls back to `write_db`), avoiding fork regressions.
 - When `DFT_SCAN_ORDER_CONSTRAINTS_FILE` is set, ORFS keeps OpenROAD’s ordering (does not apply external `scanopt_next` reorder) so groups/paths/before/fixed_edge constraints are preserved.
+- Constraints semantics (important for interpreting harness results):
+  - `group` in the constraints file enforces **contiguity in scan order**, but does not force “all members must be in exactly one chain” when `K>1`. Use `assign <chain> <group>` for must-same-chain behavior.
+- Output interpretation:
+  - OpenROAD `write_scandef` currently prints the `ORDERED` list in the opposite direction of scan shifting (the first listed cell is adjacent to `scan_out_*`). For “scan_in → scan_out” order, reverse the list.
 - For how to run and validate, see `doc-DFT-howto.md` (keeps commands current).
+
+## Handoff quickstart (what to run / where to look)
+
+Fastest way to sanity-check scan planning/stitching in this repo:
+
+- Repro harness: `./replicator/run_all.sh` (docs: `replicator/README.md`)
+  - Expected infeasible cases: `5c`, `6c`, `6e` (should error with `Scan architect constraints infeasible`)
+  - All other cases should write `plot.png` + `post.odb` under `replicator/*/runs/*/`
+- ORFS flow (scan insertion + stitch):
+  - `make -C flow DESIGN_CONFIG=./designs/<platform>/<design>/config.mk FLOW_VARIANT=with_dft DFT_ENABLE=1 finish`
+- Plot scan chains:
+  - From ODB (pin-based, direction-marked): `openroad -python -exit flow/util/scan_chain_plot_openroad.py --odb <post.odb> --out <plot.png> [--constraints-file <constraints>]`
+  - From DEF+Verilog (reconstructs chain connectivity): `python3 flow/util/scan_chain_plot.py --verilog <6_final.v> --def <6_final.def> --auto-chains --out <plot.png>`
+- Validate scan connectivity:
+  - `python3 flow/util/scan_chain_validate.py --verilog <6_final.v> --auto-chains`
+  - Or from an ODB: `python3 flow/util/scan_chain_validate.py --odb <place_or_cts.odb> --openroad $OPENROAD_EXE --liberty <lib> --sdc <sdc> --ensure-ports --scan-replace --execute-dft-plan`
 
 ## What Was Fixed in OpenROAD DFT
 
@@ -93,6 +116,7 @@ Implemented in `tools/OpenROAD/src/dft/src/config/ScanArchitectConfig.cpp` (see 
   - aliases: `chain_begin <name> ...` (`chainbegin`), `chain_end <name> ...` (`chainend`)
 - Grouping:
   - `group [<name>] [<priority>] <inst/group...>` (hierarchical; cycles rejected)
+    - Semantics: contiguity/order only. Groups may be split across chains for feasibility when `K>1`; use `assign <chain> <group>` to force must-same-chain.
   - `path [<name>] [<priority>] <inst...>` (strict adjacency subpath; ≥2 instances)
   - `default_priority <int>` (0–127)
 - Directed ordering:
@@ -215,7 +239,9 @@ Per scan chain, minimize a proxy cost (default `PLACEMENT` metric):
 
 Where:
 - `SI[k]` is the scan-in pin location of scan cell `k`, and `SO[k]` is the scan-out pin location.
-- Pin locations are taken from the pin bbox lower-left corner (`getBBox().xMin/yMin`) for both `dbITerm` and `dbBTerm`, falling back to the placed instance location when pin geometry is unavailable.
+- Pin locations are taken from the **pin geometry** (OpenDB term bbox lower-left corner via `getBBox().xMin/yMin`) for both `dbITerm` and `dbBTerm`, falling back to the placed instance location only when pin geometry is unavailable.
+  - This is why DEF/ODB *pin shapes* (and any scan port placement) affect ordering, while instance origin alone is not the cost driver.
+  - Plotters may use pin centers for readability; that should only shift points within a pin bbox and does not change scan-chain correctness.
 
 ORFS emits this same placement-based proxy as a report + metrics after stitching:
 - `flow/reports/<platform>/<design>/<variant>/dft_scan_chain_cost_pregrt.rpt`
@@ -274,6 +300,7 @@ Location proxy + scan net sigtype:
 - OpenROAD supports three ordering solvers via `set_dft_config -scan_order_solver`:
   - `HEURISTIC`: NN + farthest-insertion + bounded 2-opt (rtree fallback for huge chains)
   - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD uses UCLA as a preference while still enforcing constraints.
+    - Note: UCLA `SCANOPT` does not honor `-scanopt_time_limit` (no upstream time-budget mechanism); runtime is controlled by `-scanopt_rounds`.
   - `ILS`: iterated local search (double-bridge kicks + relocate/swap/2-opt) with a superlinear long-edge penalty to suppress “jumps”
 - `DFT_SCANOPT_TIME_LIMIT` is treated as a total budget for `ILS` and is split across chains to avoid runtime scaling with chain count.
 - ORFS can benchmark external scan ordering solvers (e.g., OR-Tools/LKH) via `DFT_SCAN_SOLVER=scanopt_next` + `DFT_SCAN_SOLVER_BIN` (TSV in → order out). The bundled `scanopt_next` is a lightweight NumPy-only reference, not OR-Tools.

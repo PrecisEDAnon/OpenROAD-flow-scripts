@@ -24,10 +24,30 @@ This auto-wires the two ORFS DFT hook scripts:
   - runs `execute_dft_plan` (stitches the scan chain using placement)
   - defaults to `DFT_SCAN_ORDER_SOLVER=SCANOPT` (UCLA ScanOptpack) with `DFT_SCANOPT_ROUNDS=500000` (mapped to UCLA major loops). `DFT_SCANOPT_TIME_LIMIT` applies to `DFT_SCAN_ORDER_SOLVER=ILS` (and to `SCANOPT` when it falls back to `ILS` for `PIN_TO_NET`).
 
+Note on solver naming + time budgeting:
+- `DFT_SCAN_ORDER_SOLVER=SCANOPT` selects the vendored UCLA ScanOptpack solver. **Upstream UCLA ScanOptpack has no time-based stopping condition**, so `DFT_SCANOPT_TIME_LIMIT` is ignored for `PLACEMENT` ordering; use `DFT_SCANOPT_ROUNDS` to control runtime.
+- `DFT_SCAN_ORDER_SOLVER=ILS` selects the OpenROAD in-tree iterated local search solver; `DFT_SCANOPT_TIME_LIMIT` applies here.
+- `report_dft_config` prints `Scan Order Solver: ScanOpt` when UCLA `SCANOPT` is selected, and `Scan Order Solver: ILS` when the in-tree solver is selected.
+
 Note:
 - If you set `DFT_CLOCK_MIXING=clock_mix`, mixed-clock/edge chains require lockup insertion during stitching. ORFS defaults `DFT_LOCKUP_POLICY=auto`, which will automatically re-run with `DFT_CLOCK_MIXING=no_mix` when mixed domains are detected (so `clock_mix` becomes a no-op unless you change the policy).
   - To keep `clock_mix`, set `DFT_LOCKUP_POLICY=warn` (or `off`) and configure lockup insertion (at minimum: `DFT_LOCKUP_CELL_RISING` + `DFT_LOCKUP_CLOCK_PIN_RISING`, and likewise `*_FALLING` if negedge scan flops exist).
 - Polarity defaults to `DFT_POLARITY_MODE=strict` (no mixed polarity within a chain). To allow mixed polarity, set `DFT_POLARITY_MODE=mid` (falling-edge flops are stitched before rising-edge flops within each chain).
+
+## Reproducer: DFT Replicator (JPEG-REAL1)
+
+This repo includes a self-contained harness to exercise scan planning/stitching
+against a fixed Sky130HD JPEG database:
+
+- Run: `./replicator/run_all.sh`
+- Docs: `replicator/README.md`
+- Outputs:
+  - Logs: `replicator/<section>/logs/<test>.log`
+  - Artifacts: `replicator/<section>/runs/<test>/plot.png` and `post.odb`
+
+Expected behavior:
+- Only `5c`, `6c`, `6e` are infeasible by construction (and should error with `Scan architect constraints infeasible`).
+- All other cases should produce a stitched solution and a `plot.png`.
 
 ## Optional: Routing-aware ordering (trial route, then stitch)
 
@@ -92,6 +112,7 @@ Provide a constraints file to enforce contiguity (groups) and directed adjacency
 File format:
 - Documented in OpenROAD DFT at `tools/OpenROAD/src/dft/README.md` (“Scan Ordering Constraints File”).
 - Note: begin/end coordinates are in DBU (the same units used by DEF/ODB).
+- Semantics note: `group` enforces **contiguity** in scan order; it does not, by itself, force all members into a single chain when `K>1`. To force same-chain membership, use `assign <chain> <inst|group...>`.
 
 ## Optional: Exclude functional shift registers
 
@@ -137,6 +158,9 @@ To export a standalone DEF-style `SCANCHAINS` section for ATPG/external tooling:
 
 - `DFT_WRITE_SCANDEF=1` (writes to `$RESULTS_DIR/6_final.scandef`)
 - `DFT_SCANDEF_FILE=/path/to/output.scandef` (optional override)
+
+Note:
+- OpenROAD `write_scandef` currently prints the `ORDERED` list in the opposite direction of scan shifting (the first listed cell is adjacent to `scan_out_*`). For “scan_in → scan_out” order, reverse the list.
 
 ## Optional: Split multi-scan-port scan cells (MBFF-like)
 
