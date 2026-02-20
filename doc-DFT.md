@@ -30,12 +30,12 @@ Toggle variants (kept for comparison):
     - `PIN_TO_NET`: routing-aware pin-to-net distance to scan-out net guides/routes, plus a placement tie-break, the same long-edge penalty, and the same blockage detour penalty.
   - Solvers:
     - `HEURISTIC`: greedy NN + farthest insertion + bounded 2-opt (rtree fallback for huge chains).
-    - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD uses UCLA as a preference while still enforcing constraints.
+    - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD enforces constraints and uses UCLA as a component-ordering preference.
     - `ILS`: OpenROAD in-tree iterated local search solver (used automatically for `PIN_TO_NET` ordering).
 - Time budgeting:
-  - UCLA `SCANOPT` has no upstream time-budget mechanism; use `DFT_SCANOPT_ROUNDS` to control runtime.
+  - UCLA `SCANOPT` has no upstream time-budget mechanism; use `DFT_UCLA_MAJOR_LOOPS` to control runtime.
   - `DFT_SCANOPT_TIME_LIMIT` applies to the in-tree `ILS` solver (split across chains).
-- For A/B comparisons, fix `DFT_SCANOPT_SEED` and use either `DFT_SCANOPT_ROUNDS` (`SCANOPT`) or `DFT_SCANOPT_TIME_LIMIT` (`ILS`) for stable runtimes.
+- For A/B comparisons, fix `DFT_SCANOPT_SEED` and use either `DFT_UCLA_MAJOR_LOOPS` (`SCANOPT`) or `DFT_SCANOPT_TIME_LIMIT` (`ILS`) for stable runtimes.
 - ORFS scan-chain tooling uses pin-level asymmetric costs (scan-out → scan-in) via `report_dft_plan_pins -verbose`.
 - Scan enable fanout control is handled in OpenROAD as `buffer_scan_enable`; ORFS calls it by default via `DFT_BUFFER_SCAN_ENABLE=1` (falls back to legacy `insert_buffer` if the command is unavailable).
 - `polarity_mode=strict` is the default (so mixed-edge flops are split across chains unless explicitly overridden).
@@ -299,8 +299,8 @@ Location proxy + scan net sigtype:
 
 - OpenROAD supports three ordering solvers via `set_dft_config -scan_order_solver`:
   - `HEURISTIC`: NN + farthest-insertion + bounded 2-opt (rtree fallback for huge chains)
-  - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD uses UCLA as a preference while still enforcing constraints.
-    - Note: UCLA `SCANOPT` does not honor `-scanopt_time_limit` (no upstream time-budget mechanism); runtime is controlled by `-scanopt_rounds`.
+  - `SCANOPT`: UCLA ScanOptpack reference solver (vendored). Supports `PLACEMENT` only; begin/end are inferred if not provided. When scan-order constraints are present, OpenROAD enforces constraints and uses UCLA as a component-ordering preference.
+    - Note: UCLA `SCANOPT` does not honor `-scanopt_time_limit` (no upstream time-budget mechanism); runtime is controlled by `-ucla_major_loops`.
   - `ILS`: iterated local search (double-bridge kicks + relocate/swap/2-opt) with a superlinear long-edge penalty to suppress “jumps”
 - `DFT_SCANOPT_TIME_LIMIT` is treated as a total budget for `ILS` and is split across chains to avoid runtime scaling with chain count.
 - ORFS can benchmark external scan ordering solvers (e.g., OR-Tools/LKH) via `DFT_SCAN_SOLVER=scanopt_next` + `DFT_SCAN_SOLVER_BIN` (TSV in → order out). The bundled `scanopt_next` is a lightweight NumPy-only reference, not OR-Tools.

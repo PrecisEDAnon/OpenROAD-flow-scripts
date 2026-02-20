@@ -108,8 +108,10 @@ if args.group_mode == "split":
     flops_to_regroup = sorted(scan_flops, key=lambda i: i.getBBox().xMin())[:n_flops // 5]
 elif args.group_mode == "even":
     flops_to_regroup = random.sample(scan_flops, n_flops // 5)
+elif args.group_mode == "overlap":
+    flops_to_regroup = random.sample(scan_flops, n_flops // 5)
 else:
-    raise Exception("Unknown Clock Mode")
+    raise Exception("Unknown Group Mode")
 
 
 with open(f"{args.output}/constraints", "w") as file:  
@@ -124,7 +126,7 @@ with open(f"{args.output}/constraints", "w") as file:
     
     group2 = []
     for flop in scan_flops:
-        if flop.getName() not in group1:
+        if args.group_mode == "overlap" or flop.getName() not in group1:
             group2.append(flop.getName())
     file.write(f"group group2 {' '.join(group2)}\n")
             
@@ -148,4 +150,93 @@ design.evalTclString(f"write_db {args.output}/post.odb")
 
 S = chainlib.getAllChains(block)
 chainlib.printChainsStats(block, S)
+
+def _parse_constraints_groups(path):
+    groups = {}
+    before = []
+    with open(path, "r") as f:
+        for raw in f:
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            toks = line.split()
+            if not toks:
+                continue
+            kw = toks[0].lower()
+            if kw == "group":
+                if len(toks) < 3:
+                    continue
+                name = toks[1]
+                start = 2
+                # Optional integer priority.
+                if len(toks) >= 4:
+                    try:
+                        int(toks[2])
+                        start = 3
+                    except Exception:
+                        start = 2
+                groups[name] = toks[start:]
+            elif kw == "before" and len(toks) >= 3:
+                before.append((toks[1], toks[2]))
+    return groups, before
+
+def _chain_flop_order(chain):
+    insts = []
+    for node in chain:
+        if "/SCD" in node:
+            insts.append(node.split("/", 1)[0])
+    return insts
+
+def _contiguous_span(indices):
+    if not indices:
+        return True, None
+    mn = min(indices)
+    mx = max(indices)
+    return (mx - mn + 1 == len(indices)), (mn, mx, len(indices))
+
+# Assert group contiguity / before constraints (to catch regressions and avoid
+# visual misinterpretation of physical dispersion as scan-order non-contiguity).
+groups, befores = _parse_constraints_groups(f"{args.output}/constraints")
+if groups:
+    gsets = {k: set(v) for k, v in groups.items()}
+    if set(gsets.keys()) == {"group1", "group2"}:
+        if gsets["group1"] & gsets["group2"]:
+            raise RuntimeError("constraints invalid: group1 and group2 overlap")
+        all_grouped = gsets["group1"] | gsets["group2"]
+    else:
+        all_grouped = None
+
+    for ci, chain in enumerate(S):
+        insts = _chain_flop_order(chain)
+        pos = {name: i for i, name in enumerate(insts)}
+
+        if all_grouped is not None:
+            missing = [name for name in insts if name not in all_grouped]
+            if missing:
+                raise RuntimeError(
+                    f"constraints invalid: chain {ci} has {len(missing)} ungrouped flops"
+                )
+
+        for gname, members in gsets.items():
+            idxs = [pos[m] for m in members if m in pos]
+            idxs.sort()
+            ok, span = _contiguous_span(idxs)
+            if not ok:
+                raise RuntimeError(
+                    f"group not contiguous: {gname} in chain {ci} (span={span})"
+                )
+
+        for a, b in befores:
+            if a not in gsets or b not in gsets:
+                continue
+            a_idxs = [pos[m] for m in gsets[a] if m in pos]
+            b_idxs = [pos[m] for m in gsets[b] if m in pos]
+            if not a_idxs or not b_idxs:
+                continue
+            if max(a_idxs) >= min(b_idxs):
+                raise RuntimeError(
+                    f"before violated: {a} before {b} in chain {ci} "
+                    f"(max({a})={max(a_idxs)} min({b})={min(b_idxs)})"
+                )
+
 chainlib.graph(block, S, f"{args.output}/plot.png", "__GROUP1", "in Group 1")

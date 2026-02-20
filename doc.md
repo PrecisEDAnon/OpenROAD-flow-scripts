@@ -54,8 +54,9 @@ Key knobs (ORFS-clean-DFT):
 - `DFT_PLACE_SCAN_PORTS`: re-place `scan_in_N`/`scan_out_N` near chain endpoints; defaults on when multi-chain is configured; override with `DFT_PLACE_SCAN_PORTS=0`
 - `DFT_SCAN_ORDER_METRIC`: `PIN_TO_NET` (routing-aware) or `PLACEMENT`
 - `DFT_SCAN_ORDER_SOLVER`: `SCANOPT` (default; UCLA ScanOptpack; `PLACEMENT` only; begin/end inferred if not provided) / `ILS` (OpenROAD in-tree local search) / `HEURISTIC`
+- `DFT_UCLA_MAJOR_LOOPS`: iteration budget for UCLA `SCANOPT` (default `100`)
 - `DFT_SCANOPT_TIME_LIMIT`: total time budget (seconds) split across chains for `ILS` (default `300`)
-- `DFT_SCANOPT_ROUNDS`: iteration budget for `SCANOPT`/`ILS` (default `500000`)
+- `DFT_SCANOPT_ROUNDS`: iteration budget for `ILS` (default `500000`)
 - `DFT_BLOCKAGE_WEIGHT`: blockage-aware detour penalty (default `1.0`, `0` disables)
 - `DFT_DONT_TOUCH_SCAN_NETS`: marks most SCAN nets `dont_touch` post-stitching to reduce QoR-driven resizer churn (scan_enable tree is kept optimizable)
 - `DFT_BUFFER_SCAN_ENABLE`: buffers/splits `scan_enable_0` to control fanout and avoid GRT freezes (default `1`)

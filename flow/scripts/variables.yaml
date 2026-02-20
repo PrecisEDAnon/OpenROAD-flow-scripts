@@ -1062,9 +1062,17 @@ DFT_SCAN_ORDER_SOLVER:
   stages:
     - floorplan
     - grt
+DFT_UCLA_MAJOR_LOOPS:
+  description: >
+    Iteration budget (“major loops”) for UCLA `SCANOPT` ordering (pass-through
+    to `set_dft_config -ucla_major_loops`).
+  default: 100
+  stages:
+    - floorplan
+    - grt
 DFT_SCANOPT_ROUNDS:
   description: >
-    Iterated local-search rounds for OpenROAD `-scan_order_solver SCANOPT`
+    Iterated local-search rounds for OpenROAD in-tree scan ordering (`ILS`)
     (pass-through to `set_dft_config -scanopt_rounds`).
   default: 500000
   stages:
@@ -1072,8 +1080,7 @@ DFT_SCANOPT_ROUNDS:
     - grt
 DFT_SCANOPT_SEED:
   description: >
-    Random seed for OpenROAD `-scan_order_solver SCANOPT` (pass-through to
-    `set_dft_config -scanopt_seed`).
+    Random seed for scan ordering (pass-through to `set_dft_config -scanopt_seed`).
   default: 1
   stages:
     - floorplan
@@ -1084,7 +1091,8 @@ DFT_SCANOPT_TIME_LIMIT:
     (pass-through to `set_dft_config -scanopt_time_limit`). OpenROAD splits this
     budget across all scan chains to keep total runtime bounded as chain count
     increases. `0` means unlimited. Note: UCLA `SCANOPT` does not currently
-    honor this time limit for `PLACEMENT`.
+    honor this time limit for `PLACEMENT`; use `DFT_UCLA_MAJOR_LOOPS` to control
+    UCLA runtime.
   default: 300
   stages:
     - floorplan
@@ -1092,9 +1100,9 @@ DFT_SCANOPT_TIME_LIMIT:
 DFT_SCANOPT_TEMP_CONTROL:
   description: >
     Enable ScanOpt temperature control (optional uphill-move acceptance) for
-    OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config
-    -scanopt_temp_control`). When enabled, ScanOpt may accept a worse move with
-    probability `exp(-Δ/temperature)` to escape local minima; use
+    scan ordering (pass-through to `set_dft_config -scanopt_temp_control`). When
+    enabled, the solver may accept a worse move with probability
+    `exp(-Δ/temperature)` to escape local minima; use
     `DFT_SCANOPT_SEED` for reproducibility.
   stages:
     - floorplan

@@ -525,6 +525,12 @@ proc dft_place_scan_ports_from_plan {} {
     }
   }
 
+  # Pin geometry changes affect begin/end endpoint costs in report_dft_plan;
+  # clear any cached scan plan so subsequent report/execute recomputes.
+  if { [info commands dft::invalidate_scan_architect_cache] != "" } {
+    dft::invalidate_scan_architect_cache
+  }
+
   if { !$place_scan_ports } {
     puts "DFT: leaving scan_in/out pin placement as-is (DFT_PLACE_SCAN_PORTS=0)"
   }
@@ -1460,6 +1466,7 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   set chain_count [dft_get_env DFT_CHAIN_COUNT ""]
 		  set scan_order_metric [dft_get_env DFT_SCAN_ORDER_METRIC ""]
 		  set scan_order_solver [dft_get_env DFT_SCAN_ORDER_SOLVER ""]
+			  set ucla_major_loops [dft_get_env DFT_UCLA_MAJOR_LOOPS ""]
 			  set scanopt_rounds [dft_get_env DFT_SCANOPT_ROUNDS ""]
 			  set scanopt_seed [dft_get_env DFT_SCANOPT_SEED ""]
 			  set scanopt_time_limit [dft_get_env DFT_SCANOPT_TIME_LIMIT ""]
@@ -1502,6 +1509,9 @@ proc dft_build_dft_config_args {{clock_mixing_override ""}} {
   }
   if { $scan_order_solver != "" } {
     lappend dft_args -scan_order_solver $scan_order_solver
+  }
+  if { $ucla_major_loops != "" } {
+    lappend dft_args -ucla_major_loops $ucla_major_loops
   }
   if { $scanopt_rounds != "" } {
     lappend dft_args -scanopt_rounds $scanopt_rounds
@@ -1692,13 +1702,26 @@ proc dft_stitch_scan_chains {{tag "pregrt"}} {
   }
 
   if { $solver == "openroad" } {
-    execute_dft_plan
+    # OpenROAD DFT can log [ERROR DFT-*] without raising a Tcl error / failing
+    # the OpenROAD process exit status. Capture any emitted text and also
+    # validate that scan chains were actually created in ODB.
+    set out ""
+    catch { with_output_to_variable out { execute_dft_plan } }
+    if { [regexp {\[ERROR DFT-|Scan architect constraints infeasible} $out] } {
+      error "DFT: execute_dft_plan reported DFT errors:\n$out"
+    }
+    if { ![dft_odb_has_scan_chains] } {
+      error {DFT: execute_dft_plan produced no scan chains in ODB (see log for [ERROR DFT-*]). Check DFT_CHAIN_COUNT/DFT_MAX_LENGTH, DFT_CLOCK_MIXING, DFT_POLARITY_MODE, and DFT_SCAN_ORDER_CONSTRAINTS_FILE.}
+    }
     return
   }
 
   set chain_order_by_name [dft_scan_get_chain_order_by_name $tag]
   dft_scan_stitch_from_order $chain_order_by_name
   dft_scan_store_scan_chains_in_odb $chain_order_by_name $tag
+  if { ![dft_odb_has_scan_chains] } {
+    error "DFT: stitching produced no scan chains in ODB (solver=$solver, tag=$tag)."
+  }
 }
 
 proc dft_delete_unconnected_scan_nets {} {

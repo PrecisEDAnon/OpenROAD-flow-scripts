@@ -36,16 +36,21 @@ run_case()
   set -e
   popd >/dev/null
 
+  # OpenROAD DFT may log [ERROR DFT-*] while still exiting 0 (especially via
+  # `-python`). Treat these as failures for "pass" cases.
+  local dft_err=0
+  if grep -qF "[ERROR DFT-" "${log_path}" \
+    || grep -qF "Scan architect constraints infeasible" "${log_path}"; then
+    dft_err=1
+  fi
+
   if [[ "${expected}" == "pass" ]]; then
-    if [[ "${status}" -ne 0 ]]; then
-      echo "error: ${id} failed (exit ${status}): ${log_path}" >&2
+    if [[ "${status}" -ne 0 || "${dft_err}" -ne 0 ]]; then
+      echo "error: ${id} failed (exit ${status}, dft_err=${dft_err}): ${log_path}" >&2
       exit 1
     fi
   elif [[ "${expected}" == "fail" ]]; then
-    if [[ "${status}" -ne 0 ]]; then
-      return 0
-    fi
-    if grep -q "Scan architect constraints infeasible" "${log_path}"; then
+    if [[ "${status}" -ne 0 || "${dft_err}" -ne 0 ]]; then
       return 0
     fi
     echo "error: ${id} unexpectedly passed: ${log_path}" >&2
@@ -82,5 +87,6 @@ run_case 6h 6_clocks pass --clock-mode even --k 4 --output runs/6h
 run_case 7c 7_groups pass --group-mode split --k 1 --output runs/7c
 run_case 7d 7_groups pass --group-mode even --k 1 --output runs/7d
 run_case 7e 7_groups pass --group-mode split --k 2 --output runs/7e
+run_case 7f 7_groups fail --group-mode overlap --k 1 --output runs/7f
 
-echo "OK: all required cases passed (expected failures: 5c, 6c, 6e)."
+echo "OK: all required cases passed (expected failures: 5c, 6c, 6e, 7f)."

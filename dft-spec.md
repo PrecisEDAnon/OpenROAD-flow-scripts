@@ -8,10 +8,10 @@ As of 2026-02-18, the v1.0 *planning + stitching* requirements in this doc are i
 
 Implementation notes (what the code actually does):
 - Planning/partitioning: hash-domain partitioning by clock/polarity (`tools/OpenROAD/src/dft/src/clock_domain/ClockDomainHash.cpp`) + multi-chain partitioning (`tools/OpenROAD/src/dft/src/architect/ScanArchitectHeuristic.cpp`).
-- Ordering/optimization: directed “TSP path” heuristic per chain (`tools/OpenROAD/src/dft/src/architect/Opt.cpp`) using SI/SO *pin* locations (`tools/OpenROAD/src/dft/src/utils/ScanPin.cpp`).
+  - Ordering/optimization: directed “TSP path” heuristic per chain (`tools/OpenROAD/src/dft/src/architect/Opt.cpp`) using SI/SO *pin* locations (`tools/OpenROAD/src/dft/src/utils/ScanPin.cpp`).
   - Metrics: `PLACEMENT` (pin-to-pin Manhattan + superlinear long-edge penalty) and `PIN_TO_NET` (routing-aware pin-to-net to route guides/routes + placement tie-break).
-  - Solvers: `HEURISTIC`, `SCANOPT` (UCLA ScanOptpack; `PLACEMENT` only; used as a preference where possible), and `ILS` (OpenROAD in-tree; used for `PIN_TO_NET` and as fallback).
-    - Note: UCLA `SCANOPT` does not have a time-budget mechanism upstream; `-scanopt_time_limit` applies to in-tree `ILS`.
+  - Solvers: `HEURISTIC`, `SCANOPT` (UCLA ScanOptpack; `PLACEMENT` only; begin/end inferred if not provided; when scan-order constraints are present, OpenROAD enforces constraints and uses UCLA as a component-ordering preference), and `ILS` (OpenROAD in-tree; used for `PIN_TO_NET` and as fallback).
+    - Note: UCLA `SCANOPT` does not have a time-budget mechanism upstream; use `-ucla_major_loops` to control UCLA runtime. `-scanopt_time_limit` applies to in-tree `ILS`.
 - Stitching: netlist update + optional lockup insertion (`tools/OpenROAD/src/dft/src/stitch/ScanStitch.cpp`).
 - Warn-only checks: clock gates, tri-state drivers, power-domain crossings (`tools/OpenROAD/src/dft/src/Dft.cpp`).
 

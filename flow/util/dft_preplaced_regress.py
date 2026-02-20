@@ -114,6 +114,7 @@ def run_openroad_execute_dft_plan(
     polarity_mode: str,
     scan_order_metric: Optional[str],
     scan_order_solver: str,
+    ucla_major_loops: Optional[int],
     scanopt_rounds: Optional[int],
     scanopt_seed: Optional[int],
     scanopt_time_limit: Optional[float],
@@ -210,6 +211,8 @@ def run_openroad_execute_dft_plan(
     ]
     if scan_order_metric:
         set_dft_args.append(f"-scan_order_metric {scan_order_metric}")
+    if ucla_major_loops is not None:
+        set_dft_args.append(f"-ucla_major_loops {ucla_major_loops}")
     if scanopt_rounds is not None:
         set_dft_args.append(f"-scanopt_rounds {scanopt_rounds}")
     if scanopt_seed is not None:
@@ -490,6 +493,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--polarity-mode", default="strict", choices=["mid", "strict"])
     ap.add_argument("--scan-order-metric", default=None)
     ap.add_argument("--scan-order-solver", default="SCANOPT")
+    ap.add_argument(
+        "--ucla-major-loops",
+        type=int,
+        default=100,
+        help="Iteration budget for UCLA SCANOPT (ignored for ILS/HEURISTIC).",
+    )
     ap.add_argument("--scanopt-rounds", type=int, default=500000)
     ap.add_argument("--scanopt-seed", type=int, default=1)
     ap.add_argument(
@@ -579,6 +588,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     polarity_mode=args.polarity_mode,
                     scan_order_metric=args.scan_order_metric,
                     scan_order_solver=args.scan_order_solver,
+                    ucla_major_loops=args.ucla_major_loops,
                     scanopt_rounds=args.scanopt_rounds,
                     scanopt_seed=args.scanopt_seed,
                     scanopt_time_limit=args.scanopt_time_limit,

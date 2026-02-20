@@ -127,6 +127,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--polarity-mode", default="strict", choices=["mid", "strict"])
 
     ap.add_argument("--solver", choices=["HEURISTIC", "SCANOPT"], default="SCANOPT")
+    ap.add_argument("--ucla-major-loops", type=int, default=100)
     ap.add_argument("--scanopt-time-limit", type=float, default=15.0)
     ap.add_argument("--scanopt-rounds", type=int, default=500000)
     ap.add_argument("--scanopt-seed", type=int, default=1)
@@ -207,6 +208,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         str(args.polarity_mode),
         "--scan-order-solver",
         str(args.solver),
+        "--ucla-major-loops",
+        str(args.ucla_major_loops),
         "--scanopt-rounds",
         str(args.scanopt_rounds),
         "--scanopt-seed",
@@ -246,6 +249,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "wall_s": wall_s,
                 "openroad": str(args.openroad),
                 "solver": args.solver,
+                "ucla_major_loops": args.ucla_major_loops,
                 "scanopt_time_limit": args.scanopt_time_limit,
                 "scanopt_rounds": args.scanopt_rounds,
                 "scanopt_seed": args.scanopt_seed,

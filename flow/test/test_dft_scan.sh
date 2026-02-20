@@ -27,6 +27,7 @@ run_variant() {
   # final scan wirelength report (which falls back to global-route numbers).
   make_args+=("SKIP_DETAILED_ROUTE=1")
   make_args+=("OPENROAD_EXE=$OPENROAD_EXE")
+  make_args+=("DFT_UCLA_MAJOR_LOOPS=10")
   make_args+=("DFT_SCANOPT_ROUNDS=200")
   make_args+=("DFT_SCANOPT_TIME_LIMIT=0")
   make_args+=("DFT_WRITE_SCANDEF=1")

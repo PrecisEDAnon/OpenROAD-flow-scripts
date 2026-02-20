@@ -158,10 +158,10 @@ configuration file.
 | <a name="DFT_REPORT_SCAN_WIRELENGTH"></a>DFT_REPORT_SCAN_WIRELENGTH| Emit scan wirelength report files and scan-chain cost metrics (placement proxy) in the pre-global-route and final stages.| 1|
 | <a name="DFT_ROUTE_AWARE"></a>DFT_ROUTE_AWARE| When `DFT_ENABLE=1`, enable trial-route-aware scan ordering by deferring scan stitching until after the first global route (uses `POST_GLOBAL_ROUTE_TCL` and sets `DFT_DEFER_STITCH=1`). Defaults `DFT_SCAN_ORDER_METRIC=PIN_TO_NET` unless it is already set.| 0|
 | <a name="DFT_SCANDEF_FILE"></a>DFT_SCANDEF_FILE| Output path for the SCANDEF file when `DFT_WRITE_SCANDEF=1` (defaults to `$RESULTS_DIR/6_final.scandef`).| |
-| <a name="DFT_SCANOPT_ROUNDS"></a>DFT_SCANOPT_ROUNDS| Iterated local-search rounds for OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config -scanopt_rounds`).| 500000|
-| <a name="DFT_SCANOPT_SEED"></a>DFT_SCANOPT_SEED| Random seed for OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config -scanopt_seed`).| 1|
-| <a name="DFT_SCANOPT_TEMP_CONTROL"></a>DFT_SCANOPT_TEMP_CONTROL| Enable ScanOpt temperature control (optional uphill-move acceptance) for OpenROAD `-scan_order_solver SCANOPT` (pass-through to `set_dft_config -scanopt_temp_control`). When enabled, ScanOpt may accept a worse move with probability `exp(-Δ/temperature)` to escape local minima; use `DFT_SCANOPT_SEED` for reproducibility.| |
-| <a name="DFT_SCANOPT_TIME_LIMIT"></a>DFT_SCANOPT_TIME_LIMIT| Total time budget (seconds) for OpenROAD in-tree scan ordering (`ILS`) (pass-through to `set_dft_config -scanopt_time_limit`). OpenROAD splits this budget across all scan chains to keep total runtime bounded as chain count increases. `0` means unlimited. Note: UCLA `SCANOPT` does not currently honor this time limit for `PLACEMENT`.| 300|
+| <a name="DFT_SCANOPT_ROUNDS"></a>DFT_SCANOPT_ROUNDS| Iterated local-search rounds for OpenROAD in-tree scan ordering (`ILS`) (pass-through to `set_dft_config -scanopt_rounds`).| 500000|
+| <a name="DFT_SCANOPT_SEED"></a>DFT_SCANOPT_SEED| Random seed for scan ordering (pass-through to `set_dft_config -scanopt_seed`).| 1|
+| <a name="DFT_SCANOPT_TEMP_CONTROL"></a>DFT_SCANOPT_TEMP_CONTROL| Enable ScanOpt temperature control (optional uphill-move acceptance) for scan ordering (pass-through to `set_dft_config -scanopt_temp_control`). When enabled, the solver may accept a worse move with probability `exp(-Δ/temperature)` to escape local minima; use `DFT_SCANOPT_SEED` for reproducibility.| |
+| <a name="DFT_SCANOPT_TIME_LIMIT"></a>DFT_SCANOPT_TIME_LIMIT| Total time budget (seconds) for OpenROAD in-tree scan ordering (`ILS`) (pass-through to `set_dft_config -scanopt_time_limit`). OpenROAD splits this budget across all scan chains to keep total runtime bounded as chain count increases. `0` means unlimited. Note: UCLA `SCANOPT` does not currently honor this time limit for `PLACEMENT`; use `DFT_UCLA_MAJOR_LOOPS` to control UCLA runtime.| 300|
 | <a name="DFT_SCANOPT_T_DIV"></a>DFT_SCANOPT_T_DIV| Temperature divisor for ScanOpt temp control (pass-through to `set_dft_config -scanopt_t_div`). Larger values reduce uphill acceptance.| |
 | <a name="DFT_SCAN_ENABLE_BUFFER_CELL"></a>DFT_SCAN_ENABLE_BUFFER_CELL| Buffer cell to use for `scan_enable_0` buffering (defaults to `MIN_BUF_CELL_AND_PORTS[0]`).| |
 | <a name="DFT_SCAN_ENABLE_BUFFER_LEVELS"></a>DFT_SCAN_ENABLE_BUFFER_LEVELS| Max buffering levels for `scan_enable_0` buffering.| 3|
@@ -187,6 +187,7 @@ configuration file.
 | <a name="DFT_TIMING_CRITICAL_SLACK"></a>DFT_TIMING_CRITICAL_SLACK| Slack threshold used by OpenROAD timing-aware scan ordering. `0` means only negative slack is considered critical. Pass-through to `set_dft_config -timing_critical_slack`.| 0|
 | <a name="DFT_TIMING_HOLD_WEIGHT"></a>DFT_TIMING_HOLD_WEIGHT| Timing-aware scan ordering penalty weight for hold slack at the source scan-out pin. Pass-through to `set_dft_config -timing_hold_weight`.| 0|
 | <a name="DFT_TIMING_SETUP_WEIGHT"></a>DFT_TIMING_SETUP_WEIGHT| Timing-aware scan ordering penalty weight for setup slack at the source scan-out pin. Pass-through to `set_dft_config -timing_setup_weight`.| 0|
+| <a name="DFT_UCLA_MAJOR_LOOPS"></a>DFT_UCLA_MAJOR_LOOPS| Iteration budget (“major loops”) for UCLA `SCANOPT` ordering (pass-through to `set_dft_config -ucla_major_loops`).| 100|
 | <a name="DFT_USE_EXISTING_SCAN_CHAINS"></a>DFT_USE_EXISTING_SCAN_CHAINS| When set, pass-through to `set_dft_config -use_existing_scan_chains` so OpenROAD uses scan chains already stored in ODB (for example imported via `read_def -incremental` from a SCANDEF/DEF `SCANCHAINS` section) as the plan for `report_dft_plan` and `execute_dft_plan`.| 0|
 | <a name="DFT_VERTICAL_WEIGHT"></a>DFT_VERTICAL_WEIGHT| Preferred-direction tuning for scan ordering. Vertical movement is weighted by this factor relative to horizontal. Pass-through to `set_dft_config -vertical_weight`.| 1.0|
 | <a name="DFT_WRITE_SCANDEF"></a>DFT_WRITE_SCANDEF| Export a SCANDEF/DEF-style `SCANCHAINS` section to a standalone file in the final stage (calls `write_scandef -file ...` in OpenROAD).| 0|
@@ -418,6 +419,7 @@ configuration file.
 - [DFT_TIMING_CRITICAL_SLACK](#DFT_TIMING_CRITICAL_SLACK)
 - [DFT_TIMING_HOLD_WEIGHT](#DFT_TIMING_HOLD_WEIGHT)
 - [DFT_TIMING_SETUP_WEIGHT](#DFT_TIMING_SETUP_WEIGHT)
+- [DFT_UCLA_MAJOR_LOOPS](#DFT_UCLA_MAJOR_LOOPS)
 - [DFT_USE_EXISTING_SCAN_CHAINS](#DFT_USE_EXISTING_SCAN_CHAINS)
 - [DFT_VERTICAL_WEIGHT](#DFT_VERTICAL_WEIGHT)
 - [DIE_AREA](#DIE_AREA)
@@ -569,6 +571,7 @@ configuration file.
 - [DFT_SCANOPT_TEMP_CONTROL](#DFT_SCANOPT_TEMP_CONTROL)
 - [DFT_SCANOPT_TIME_LIMIT](#DFT_SCANOPT_TIME_LIMIT)
 - [DFT_SCANOPT_T_DIV](#DFT_SCANOPT_T_DIV)
+- [DFT_UCLA_MAJOR_LOOPS](#DFT_UCLA_MAJOR_LOOPS)
 - [DFT_SCAN_ENABLE_BUFFER_CELL](#DFT_SCAN_ENABLE_BUFFER_CELL)
 - [DFT_SCAN_ENABLE_BUFFER_LEVELS](#DFT_SCAN_ENABLE_BUFFER_LEVELS)
 - [DFT_SCAN_ENABLE_MAX_FANOUT](#DFT_SCAN_ENABLE_MAX_FANOUT)

@@ -22,10 +22,10 @@ This auto-wires the two ORFS DFT hook scripts:
   - sets `set_case_analysis 0 [get_ports scan_enable_0]` (functional-mode timing)
 - `PRE_GLOBAL_ROUTE_TCL=$(pwd)/flow/scripts/dft_scan_pre_global_route.tcl`
   - runs `execute_dft_plan` (stitches the scan chain using placement)
-  - defaults to `DFT_SCAN_ORDER_SOLVER=SCANOPT` (UCLA ScanOptpack) with `DFT_SCANOPT_ROUNDS=500000` (mapped to UCLA major loops). `DFT_SCANOPT_TIME_LIMIT` applies to `DFT_SCAN_ORDER_SOLVER=ILS` (and to `SCANOPT` when it falls back to `ILS` for `PIN_TO_NET`).
+  - defaults to `DFT_SCAN_ORDER_SOLVER=SCANOPT` (UCLA ScanOptpack) with `DFT_UCLA_MAJOR_LOOPS=100`. `DFT_SCANOPT_TIME_LIMIT` applies to `DFT_SCAN_ORDER_SOLVER=ILS` (and to `SCANOPT` when it falls back to `ILS` for `PIN_TO_NET`).
 
 Note on solver naming + time budgeting:
-- `DFT_SCAN_ORDER_SOLVER=SCANOPT` selects the vendored UCLA ScanOptpack solver. **Upstream UCLA ScanOptpack has no time-based stopping condition**, so `DFT_SCANOPT_TIME_LIMIT` is ignored for `PLACEMENT` ordering; use `DFT_SCANOPT_ROUNDS` to control runtime.
+- `DFT_SCAN_ORDER_SOLVER=SCANOPT` selects the vendored UCLA ScanOptpack solver. **Upstream UCLA ScanOptpack has no time-based stopping condition**, so `DFT_SCANOPT_TIME_LIMIT` is ignored for `PLACEMENT` ordering; use `DFT_UCLA_MAJOR_LOOPS` to control runtime.
 - `DFT_SCAN_ORDER_SOLVER=ILS` selects the OpenROAD in-tree iterated local search solver; `DFT_SCANOPT_TIME_LIMIT` applies here.
 - `report_dft_config` prints `Scan Order Solver: ScanOpt` when UCLA `SCANOPT` is selected, and `Scan Order Solver: ILS` when the in-tree solver is selected.
 

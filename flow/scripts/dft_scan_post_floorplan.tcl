@@ -83,6 +83,7 @@ if { $max_length == "" } {
 set chain_count [dft_get_env DFT_CHAIN_COUNT ""]
 	set scan_order_metric [dft_get_env DFT_SCAN_ORDER_METRIC ""]
 	set scan_order_solver [dft_get_env DFT_SCAN_ORDER_SOLVER ""]
+	set ucla_major_loops [dft_get_env DFT_UCLA_MAJOR_LOOPS ""]
 	set scanopt_rounds [dft_get_env DFT_SCANOPT_ROUNDS ""]
 	set scanopt_seed [dft_get_env DFT_SCANOPT_SEED ""]
 	set scanopt_time_limit [dft_get_env DFT_SCANOPT_TIME_LIMIT ""]
@@ -126,6 +127,9 @@ if { $scan_order_metric != "" } {
 	}
 if { $scan_order_solver != "" } {
   lappend dft_args -scan_order_solver $scan_order_solver
+}
+if { $ucla_major_loops != "" } {
+  lappend dft_args -ucla_major_loops $ucla_major_loops
 }
 if { $scanopt_rounds != "" } {
   lappend dft_args -scanopt_rounds $scanopt_rounds

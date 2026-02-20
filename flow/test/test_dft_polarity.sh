@@ -25,6 +25,7 @@ rtl="$repo_root/tools/OpenROAD/src/dft/test/scan_architect_sky130.v"
 cat >"$tcl" <<EOF
 set ::env(DFT_CLOCK_MIXING) clock_mix
 set ::env(DFT_MAX_CHAIN_LENGTH) 3
+set ::env(DFT_UCLA_MAJOR_LOOPS) 10
 set ::env(DFT_SCANOPT_ROUNDS) 200
 set ::env(DFT_SCANOPT_TIME_LIMIT) 0
 set ::env(DFT_LOCKUP_POLICY) auto
