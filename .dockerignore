@@ -26,6 +26,13 @@ flow/vars*.gdb
 flow/*.log
 
 # Platforms
+# Reduce Docker build context for ms-openroad
+flow/platforms/*
+!flow/platforms/common/
+!flow/platforms/common/**
+!flow/platforms/nangate45/
+!flow/platforms/nangate45/**
+
 
 # network
 .nfs*

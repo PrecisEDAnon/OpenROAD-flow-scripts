@@ -10,7 +10,13 @@ WORKDIR /OpenROAD-flow-scripts
 
 # Overlay flow scripts from this repo/branch
 COPY env.sh /OpenROAD-flow-scripts/env.sh
-COPY flow /OpenROAD-flow-scripts/flow
+# Keep the context small: only copy what's needed for nangate45/gcd.
+COPY flow/Makefile /OpenROAD-flow-scripts/flow/Makefile
+COPY flow/scripts /OpenROAD-flow-scripts/flow/scripts
+COPY flow/util /OpenROAD-flow-scripts/flow/util
+COPY flow/designs /OpenROAD-flow-scripts/flow/designs
+COPY flow/platforms/common /OpenROAD-flow-scripts/flow/platforms/common
+COPY flow/platforms/nangate45 /OpenROAD-flow-scripts/flow/platforms/nangate45
 
 COPY ms-openroad/run-orfs.sh /usr/local/bin/run-orfs.sh
 COPY ms-openroad/orfs-extra.mk /usr/local/share/orfs-extra.mk
