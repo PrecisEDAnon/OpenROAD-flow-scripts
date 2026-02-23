@@ -269,7 +269,7 @@ do-yosys-canonicalize: yosys-dependencies
 $(RESULTS_DIR)/1_1_yosys_canonicalize.rtlil: $(YOSYS_DEPENDENCIES)
 	$(UNSET_AND_MAKE) do-yosys-canonicalize
 
-$(RESULTS_DIR)/1_2_yosys.v $(RESULTS_DIR)/1_2_yosys.sdc: $(RESULTS_DIR)/1_1_yosys_canonicalize.rtlil
+$(RESULTS_DIR)/1_2_yosys.v $(RESULTS_DIR)/1_2_yosys.sdc &: $(RESULTS_DIR)/1_1_yosys_canonicalize.rtlil
 	$(UNSET_AND_MAKE) do-yosys
 .PHONY: clean_synth
 clean_synth:
