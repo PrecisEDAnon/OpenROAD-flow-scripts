@@ -42,6 +42,9 @@ log "DESIGN_CONFIG=${DESIGN_CONFIG}"
 log "FLOW_VARIANT=${FLOW_VARIANT}"
 log "NPROC=${NPROC}"
 log "MAKE_TARGET=${MAKE_TARGET:-<default>}"
+if [[ -f /OpenROAD-flow-scripts/.ms-openroad-revision ]]; then
+  log "IMAGE_REVISION=$(cat /OpenROAD-flow-scripts/.ms-openroad-revision)"
+fi
 
 make_args=(
   "DESIGN_CONFIG=${DESIGN_CONFIG}"

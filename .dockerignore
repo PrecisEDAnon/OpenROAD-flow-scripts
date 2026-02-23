@@ -25,6 +25,9 @@ flow/vars*.gdb
 # Common temp files
 flow/*.log
 
+# Git metadata (can be huge; not needed in image)
+.git
+
 # Platforms
 # Reduce Docker build context for ms-openroad
 flow/platforms/*
@@ -32,6 +35,16 @@ flow/platforms/*
 !flow/platforms/common/**
 !flow/platforms/nangate45/
 !flow/platforms/nangate45/**
+
+# Designs
+# Reduce Docker build context for ms-openroad (only need nangate45/gcd).
+flow/designs/*
+!flow/designs/src/
+!flow/designs/src/gcd/
+!flow/designs/src/gcd/**
+!flow/designs/nangate45/
+!flow/designs/nangate45/gcd/
+!flow/designs/nangate45/gcd/**
 
 
 # network

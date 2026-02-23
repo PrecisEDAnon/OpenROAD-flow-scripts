@@ -1,0 +1,175 @@
+name: ms-openroad (Azure gcd)
+
+on:
+  push:
+    branches:
+      - microsoft-openroad
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/ms-openroad-azure-gcd.yml"
+      - "env.sh"
+      - "flow/Makefile"
+      - "flow/scripts/**"
+      - "flow/util/**"
+      - "flow/designs/nangate45/gcd/**"
+      - "flow/designs/src/gcd/**"
+      - "flow/platforms/common/**"
+      - "flow/platforms/nangate45/**"
+      - "ms-openroad/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ms-openroad-azure-gcd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Azure environment (ms-openroad subscription)
+  AZ_RG: orfs-rg-42d38e
+  AZ_ACR_NAME: orfs42d38e
+  AZ_STORAGE_ACCOUNT: orfs42d38esa
+  AZ_FILE_SHARE: orfs-share
+  AZ_IDENTITY_ID: /subscriptions/ea2e8ed3-281b-4422-a24d-41d87cd070c3/resourcegroups/orfs-rg-42d38e/providers/Microsoft.ManagedIdentity/userAssignedIdentities/orfs-aci-mi-42d38e
+
+  # GitHub OIDC → Azure federated credential (no secrets)
+  AZURE_TENANT_ID: 8a198873-4fec-4e76-8182-ca479edbbd60
+  AZURE_SUBSCRIPTION_ID: ea2e8ed3-281b-4422-a24d-41d87cd070c3
+  AZURE_CLIENT_ID: b6b68521-9572-49e8-8dd7-0cacad242f24
+
+  # Flow defaults
+  IMAGE_REPO: orfs-flow
+  DESIGN: gcd
+  PLATFORM: nangate45
+  FLOW_VARIANT: base
+  CPU: "4"
+  MEMORY_GB: "16"
+  SKIP_CTS_REPAIR_TIMING: "1"
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image in ACR from this branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::12}"
+          image_tag="sha-${short_sha}"
+          context_url="https://github.com/${GITHUB_REPOSITORY}.git#${GITHUB_REF_NAME}"
+
+          echo "ACR build:"
+          echo "  registry=${AZ_ACR_NAME}"
+          echo "  context=${context_url}"
+          echo "  dockerfile=ms-openroad/Dockerfile"
+          echo "  tags=${IMAGE_REPO}:microsoft-openroad, ${IMAGE_REPO}:${image_tag}"
+
+          az acr build \
+            --resource-group "${AZ_RG}" \
+            --registry "${AZ_ACR_NAME}" \
+            --file ms-openroad/Dockerfile \
+            --image "${IMAGE_REPO}:microsoft-openroad" \
+            --image "${IMAGE_REPO}:${image_tag}" \
+            --build-arg "VCS_REF=${GITHUB_SHA}" \
+            --build-arg "BASE_IMAGE=openroad/orfs:latest" \
+            "${context_url}"
+
+      - name: Run nangate45/gcd on Azure Container Instances
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          short_sha="${GITHUB_SHA::12}"
+          image_tag="sha-${short_sha}"
+          acr_login_server="$(az acr show -n "${AZ_ACR_NAME}" --query loginServer -o tsv)"
+          image_fqn="${acr_login_server}/${IMAGE_REPO}:${image_tag}"
+
+          run_id="${DESIGN}-${short_sha}-${GITHUB_RUN_ID}"
+          work_home="/work/${run_id}"
+
+          aci_name_raw="orfs-${run_id}"
+          aci_name="$(echo "${aci_name_raw}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9-' '-' | cut -c1-63 | sed 's/^-//; s/-$//')"
+
+          storage_key="$(az storage account keys list \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --resource-group "${AZ_RG}" \
+            --query '[0].value' -o tsv)"
+
+          echo "ACI run:"
+          echo "  rg=${AZ_RG}"
+          echo "  name=${aci_name}"
+          echo "  image=${image_fqn}"
+          echo "  cpu=${CPU} memory_gb=${MEMORY_GB}"
+          echo "  work_home=${work_home}"
+
+          az container create \
+            --resource-group "${AZ_RG}" \
+            --name "${aci_name}" \
+            --image "${image_fqn}" \
+            --os-type Linux \
+            --restart-policy Never \
+            --cpu "${CPU}" \
+            --memory "${MEMORY_GB}" \
+            --assign-identity "${AZ_IDENTITY_ID}" \
+            --acr-identity "${AZ_IDENTITY_ID}" \
+            --azure-file-volume-account-name "${AZ_STORAGE_ACCOUNT}" \
+            --azure-file-volume-account-key "${storage_key}" \
+            --azure-file-volume-share-name "${AZ_FILE_SHARE}" \
+            --azure-file-volume-mount-path /work \
+            --command-line "/usr/local/bin/run-orfs.sh" \
+            --environment-variables \
+              DESIGN="${DESIGN}" \
+              PLATFORM="${PLATFORM}" \
+              FLOW_VARIANT="${FLOW_VARIANT}" \
+              WORK_HOME="${work_home}" \
+              NPROC="${CPU}" \
+              SKIP_CTS_REPAIR_TIMING="${SKIP_CTS_REPAIR_TIMING}" \
+            1>/dev/null
+
+          echo "Waiting for completion..."
+          exit_code=""
+          while true; do
+            read -r group_state container_state exit_code < <(az container show \
+              --resource-group "${AZ_RG}" \
+              --name "${aci_name}" \
+              --query '{g:instanceView.state, c:containers[0].instanceView.currentState.state, e:containers[0].instanceView.currentState.exitCode}' \
+              -o tsv)
+
+            if [[ "${exit_code:-}" == "None" ]]; then
+              exit_code=""
+            fi
+
+            echo "  group=${group_state} container=${container_state} exitCode=${exit_code:-}"
+
+            if [[ "${container_state}" == "Terminated" || "${group_state}" == "Failed" || "${group_state}" == "Succeeded" || "${group_state}" == "Terminated" || "${group_state}" == "Stopped" ]]; then
+              break
+            fi
+            sleep 20
+          done
+
+          echo ""
+          echo "Logs:"
+          az container logs --resource-group "${AZ_RG}" --name "${aci_name}" || true
+
+          if [[ -z "${exit_code:-}" ]]; then
+            exit_code="$(az container show --resource-group "${AZ_RG}" --name "${aci_name}" --query 'containers[0].instanceView.currentState.exitCode' -o tsv 2>/dev/null || true)"
+          fi
+          exit_code="${exit_code:-0}"
+
+          echo ""
+          echo "Artifacts are in Azure Files share '${AZ_FILE_SHARE}' under: ${run_id}/"
+
+          if [[ "${exit_code}" != "0" ]]; then
+            echo "ERROR: container exited with code ${exit_code}" >&2
+            exit "${exit_code}"
+          fi
