@@ -42,9 +42,23 @@ log "DESIGN_CONFIG=${DESIGN_CONFIG}"
 log "FLOW_VARIANT=${FLOW_VARIANT}"
 log "NPROC=${NPROC}"
 log "MAKE_TARGET=${MAKE_TARGET:-<default>}"
+
+image_revision="unknown"
 if [[ -f /OpenROAD-flow-scripts/.ms-openroad-revision ]]; then
-  log "IMAGE_REVISION=$(cat /OpenROAD-flow-scripts/.ms-openroad-revision)"
+  image_revision="$(cat /OpenROAD-flow-scripts/.ms-openroad-revision)"
+  log "IMAGE_REVISION=${image_revision}"
 fi
+
+meta_file="${WORK_HOME}/ms-openroad-metadata.txt"
+{
+  echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "image_revision=${image_revision}"
+  echo "design=${DESIGN}"
+  echo "platform=${PLATFORM}"
+  echo "flow_variant=${FLOW_VARIANT}"
+  echo "design_config=${DESIGN_CONFIG}"
+} >"${meta_file}"
+log "Wrote metadata: ${meta_file}"
 
 make_args=(
   "DESIGN_CONFIG=${DESIGN_CONFIG}"
