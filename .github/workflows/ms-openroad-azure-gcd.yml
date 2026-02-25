@@ -32,6 +32,7 @@ env:
   AZ_ACR_NAME: orfs4bf708
   AZ_STORAGE_ACCOUNT: orfs4bf708sa
   AZ_FILE_SHARE: orfs-share
+  AZ_TELEMETRY_CONTAINER: orfs-telemetry
   AZ_IDENTITY_ID: /subscriptions/ea2e8ed3-281b-4422-a24d-41d87cd070c3/resourcegroups/orfs-rg-4bf708/providers/Microsoft.ManagedIdentity/userAssignedIdentities/orfs-aci-mi-4bf708
 
   # GitHub OIDC → Azure federated credential (no secrets)
@@ -173,3 +174,67 @@ jobs:
             echo "ERROR: container exited with code ${exit_code}" >&2
             exit "${exit_code}"
           fi
+
+      - name: Upload RunRecord to Azure Blob (RunRecord.v1)
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          short_sha="${GITHUB_SHA::12}"
+          run_id="${DESIGN}-${short_sha}-${GITHUB_RUN_ID}"
+
+          storage_key="$(az storage account keys list \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --resource-group "${AZ_RG}" \
+            --query '[0].value' -o tsv)"
+
+          az storage container create \
+            --name "${AZ_TELEMETRY_CONTAINER}" \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --account-key "${storage_key}" \
+            1>/dev/null
+
+          tmp_dir="$(mktemp -d)"
+          az storage file download \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --account-key "${storage_key}" \
+            --share-name "${AZ_FILE_SHARE}" \
+            --path "${run_id}/ms-openroad-metadata.txt" \
+            --dest "${tmp_dir}/ms-openroad-metadata.txt" \
+            -o none
+
+          jq -Rn \
+            --arg run_id "${run_id}" \
+            --arg git_sha "${GITHUB_SHA}" \
+            --arg github_run_id "${GITHUB_RUN_ID}" \
+            --arg github_repository "${GITHUB_REPOSITORY}" \
+            --arg image_repo "${IMAGE_REPO}" \
+            --arg image_tag "sha-${short_sha}" \
+            'def kv: split("=") as $p | {($p[0]): ($p[1] // "")};
+             [inputs | select(length>0) | kv] | add
+             | . + {
+                 schema: "RunRecord.v1",
+                 run_id: $run_id,
+                 git_sha: $git_sha,
+                 github_run_id: $github_run_id,
+                 github_repository: $github_repository,
+                 image_repo: $image_repo,
+                 image_tag: $image_tag
+               }' \
+            "${tmp_dir}/ms-openroad-metadata.txt" > "${tmp_dir}/run_record.json"
+
+          date_prefix="$(date -u +%Y/%m/%d)"
+          blob_name="runs/${date_prefix}/run_id=${run_id}/run_record.json"
+
+          az storage blob upload \
+            --overwrite \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --account-key "${storage_key}" \
+            --container-name "${AZ_TELEMETRY_CONTAINER}" \
+            --name "${blob_name}" \
+            --file "${tmp_dir}/run_record.json" \
+            -o none
+
+          echo "Uploaded telemetry: ${AZ_TELEMETRY_CONTAINER}/${blob_name}"
+
