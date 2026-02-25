@@ -28,11 +28,11 @@ concurrency:
 
 env:
   # Azure environment (ms-openroad subscription)
-  AZ_RG: orfs-rg-42d38e
-  AZ_ACR_NAME: orfs42d38e
-  AZ_STORAGE_ACCOUNT: orfs42d38esa
+  AZ_RG: orfs-rg-4bf708
+  AZ_ACR_NAME: orfs4bf708
+  AZ_STORAGE_ACCOUNT: orfs4bf708sa
   AZ_FILE_SHARE: orfs-share
-  AZ_IDENTITY_ID: /subscriptions/ea2e8ed3-281b-4422-a24d-41d87cd070c3/resourcegroups/orfs-rg-42d38e/providers/Microsoft.ManagedIdentity/userAssignedIdentities/orfs-aci-mi-42d38e
+  AZ_IDENTITY_ID: /subscriptions/ea2e8ed3-281b-4422-a24d-41d87cd070c3/resourcegroups/orfs-rg-4bf708/providers/Microsoft.ManagedIdentity/userAssignedIdentities/orfs-aci-mi-4bf708
 
   # GitHub OIDC → Azure federated credential (no secrets)
   AZURE_TENANT_ID: 8a198873-4fec-4e76-8182-ca479edbbd60
