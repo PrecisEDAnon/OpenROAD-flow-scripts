@@ -182,7 +182,9 @@ jobs:
           set -euo pipefail
 
           short_sha="${GITHUB_SHA::12}"
+          image_tag="sha-${short_sha}"
           run_id="${DESIGN}-${short_sha}-${GITHUB_RUN_ID}"
+          benchmark_id="${PLATFORM}-${DESIGN}-${FLOW_VARIANT}"
 
           storage_key="$(az storage account keys list \
             --account-name "${AZ_STORAGE_ACCOUNT}" \
@@ -196,6 +198,8 @@ jobs:
             1>/dev/null
 
           tmp_dir="$(mktemp -d)"
+
+          # Pull the minimal set of artifacts needed for telemetry.
           az storage file download \
             --account-name "${AZ_STORAGE_ACCOUNT}" \
             --account-key "${storage_key}" \
@@ -204,28 +208,156 @@ jobs:
             --dest "${tmp_dir}/ms-openroad-metadata.txt" \
             -o none
 
-          jq -Rn \
-            --arg run_id "${run_id}" \
-            --arg git_sha "${GITHUB_SHA}" \
-            --arg github_run_id "${GITHUB_RUN_ID}" \
-            --arg github_repository "${GITHUB_REPOSITORY}" \
-            --arg image_repo "${IMAGE_REPO}" \
-            --arg image_tag "sha-${short_sha}" \
-            'def kv: split("=") as $p | {($p[0]): ($p[1] // "")};
-             [inputs | select(length>0) | kv] | add
-             | . + {
-                 schema: "RunRecord.v1",
-                 run_id: $run_id,
-                 git_sha: $git_sha,
-                 github_run_id: $github_run_id,
-                 github_repository: $github_repository,
-                 image_repo: $image_repo,
-                 image_tag: $image_tag
-               }' \
-            "${tmp_dir}/ms-openroad-metadata.txt" > "${tmp_dir}/run_record.json"
+          az storage file download \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --account-key "${storage_key}" \
+            --share-name "${AZ_FILE_SHARE}" \
+            --path "${run_id}/reports/${PLATFORM}/${DESIGN}/${FLOW_VARIANT}/6_finish.rpt" \
+            --dest "${tmp_dir}/6_finish.rpt" \
+            -o none
+
+          az storage file download \
+            --account-name "${AZ_STORAGE_ACCOUNT}" \
+            --account-key "${storage_key}" \
+            --share-name "${AZ_FILE_SHARE}" \
+            --path "${run_id}/reports/${PLATFORM}/${DESIGN}/${FLOW_VARIANT}/synth_stat.txt" \
+            --dest "${tmp_dir}/synth_stat.txt" \
+            -o none
+
+          rg_location="$(az group show -n "${AZ_RG}" --query location -o tsv)"
+
+          # Best-effort: resolve the image digest for the tag we just built.
+          image_digest="$(az acr repository show-manifests \
+            -n "${AZ_ACR_NAME}" \
+            --repository "${IMAGE_REPO}" \
+            --query "[?contains(tags, '${image_tag}')].digest | [0]" \
+            -o tsv 2>/dev/null || true)"
+
+          export tmp_dir run_id benchmark_id image_tag image_digest rg_location
+          python3 - <<'PYPARSE'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          tmp_dir = Path(os.environ['tmp_dir'])
+
+          def parse_kv_file(p: Path):
+            out = {}
+            for line in p.read_text().splitlines():
+              line = line.strip()
+              if not line or '=' not in line:
+                continue
+              k, v = line.split('=', 1)
+              out[k.strip()] = v.strip()
+            return out
+
+          def find_float(pattern: str, text: str):
+            m = re.search(pattern, text, flags=re.MULTILINE)
+            return float(m.group(1)) if m else None
+
+          def find_int(pattern: str, text: str):
+            m = re.search(pattern, text, flags=re.MULTILINE)
+            return int(m.group(1)) if m else None
+
+          meta = parse_kv_file(tmp_dir / 'ms-openroad-metadata.txt')
+          finish = (tmp_dir / '6_finish.rpt').read_text(errors='replace')
+          synth = (tmp_dir / 'synth_stat.txt').read_text(errors='replace')
+
+          tns = find_float(r'^tns max\s+(-?\d+(?:\.\d+)?)\s*$', finish)
+          wns = find_float(r'^wns max\s+(-?\d+(?:\.\d+)?)\s*$', finish)
+          worst_slack = find_float(r'^worst slack max\s+(-?\d+(?:\.\d+)?)\s*$', finish)
+
+          clk = re.search(r'^(\S+)\s+period_min\s*=\s*(\d+(?:\.\d+)?)\s+fmax\s*=\s*(\d+(?:\.\d+)?)\s*$', finish, flags=re.MULTILINE)
+          clock_name = clk.group(1) if clk else None
+          period_min = float(clk.group(2)) if clk else None
+          fmax_mhz = float(clk.group(3)) if clk else None
+
+          setup_skew = find_float(r'^\s*(-?\d+(?:\.\d+)?)\s+setup skew\s*$', finish)
+
+          viol = {
+            'max_slew': find_int(r'^max slew violation count\s+(\d+)\s*$', finish),
+            'max_fanout': find_int(r'^max fanout violation count\s+(\d+)\s*$', finish),
+            'max_cap': find_int(r'^max cap violation count\s+(\d+)\s*$', finish),
+            'setup': find_int(r'^setup violation count\s+(\d+)\s*$', finish),
+            'hold': find_int(r'^hold violation count\s+(\d+)\s*$', finish),
+          }
+
+          total_power_w = None
+          m = re.search(r'^Total\s+\S+\s+\S+\s+\S+\s+(\S+)\s+\S+\s*$', finish, flags=re.MULTILINE)
+          if m:
+            try:
+              total_power_w = float(m.group(1))
+            except ValueError:
+              total_power_w = None
+
+          # synth_stat has a line like: "501  639.198 cells"
+          synth_cells = None
+          synth_area = None
+          m = re.search(r'^\s*(\d+)\s+(\d+(?:\.\d+)?)\s+cells\s*$', synth, flags=re.MULTILINE)
+          if m:
+            synth_cells = int(m.group(1))
+            synth_area = float(m.group(2))
+
+          run_record = {
+            'schema': 'RunRecord.v1',
+            # IDs
+            'run_id': os.environ['run_id'],
+            'benchmark_id': os.environ['benchmark_id'],
+            # Repro
+            'git_sha': os.environ['GITHUB_SHA'],
+            'image_repo': os.environ['IMAGE_REPO'],
+            'image_tag': os.environ['image_tag'],
+            'image_digest': os.environ.get('image_digest') or None,
+            # Azure
+            'azure': {
+              'subscription_id': os.environ.get('AZURE_SUBSCRIPTION_ID'),
+              'resource_group': os.environ.get('AZ_RG'),
+              'location': os.environ.get('rg_location'),
+              'storage_account': os.environ.get('AZ_STORAGE_ACCOUNT'),
+              'file_share': os.environ.get('AZ_FILE_SHARE'),
+              'telemetry_container': os.environ.get('AZ_TELEMETRY_CONTAINER'),
+            },
+            # GitHub
+            'github': {
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'repository': os.environ.get('GITHUB_REPOSITORY'),
+              'ref': os.environ.get('GITHUB_REF_NAME'),
+            },
+            # Flow identity
+            'design': meta.get('design'),
+            'platform': meta.get('platform'),
+            'flow_variant': meta.get('flow_variant'),
+            'design_config': meta.get('design_config'),
+            'timestamp_utc': meta.get('timestamp_utc'),
+            # System (requested)
+            'system': {
+              'cpu': int(os.environ.get('CPU', '0') or 0) or None,
+              'memory_gb': float(os.environ.get('MEMORY_GB', '0') or 0) or None,
+            },
+            # QoR
+            'qor': {
+              'tns_ns': tns,
+              'wns_ns': wns,
+              'worst_slack_ns': worst_slack,
+              'clock_name': clock_name,
+              'period_min_ns': period_min,
+              'fmax_mhz': fmax_mhz,
+              'setup_skew_ns': setup_skew,
+              'total_power_w': total_power_w,
+              'violations': viol,
+              'synth_cells': synth_cells,
+              'synth_area': synth_area,
+            },
+          }
+
+          out_path = tmp_dir / 'run_record.json'
+          out_path.write_text(json.dumps(run_record, indent=2, sort_keys=True) + '\n')
+          print('Wrote', out_path)
+          PYPARSE
 
           date_prefix="$(date -u +%Y/%m/%d)"
-          blob_name="runs/${date_prefix}/run_id=${run_id}/run_record.json"
+          blob_name="runs/${date_prefix}/benchmark_id=${benchmark_id}/run_id=${run_id}/run_record.json"
 
           az storage blob upload \
             --overwrite \
@@ -237,4 +369,3 @@ jobs:
             -o none
 
           echo "Uploaded telemetry: ${AZ_TELEMETRY_CONTAINER}/${blob_name}"
-
